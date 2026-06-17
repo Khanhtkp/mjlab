@@ -63,6 +63,7 @@ demo = "mjlab.scripts.demo:main"
 list-envs = "mjlab.scripts.list_envs:main"
 viz-nan = "mjlab.scripts.nan_viz:main"
 export-scene = "mjlab.scripts.export_scene:main"
+csv-to-npz-hu-d03 = "mjlab.scripts.csv_to_npz_hu_d03:main"
 
 [dependency-groups]
 dev = [

@@ -1,140 +1,345 @@
-![Project banner](https://raw.githubusercontent.com/mujocolab/mjlab/main/docs/source/_static/mjlab-banner.jpg)
+# HU_D03 Mimic Policy Training with mjlab
 
-# mjlab
-
-[![GitHub Actions](https://img.shields.io/github/actions/workflow/status/mujocolab/mjlab/ci.yml?branch=main)](https://github.com/mujocolab/mjlab/actions/workflows/ci.yml?query=branch%3Amain)
-[![Documentation](https://github.com/mujocolab/mjlab/actions/workflows/docs.yml/badge.svg)](https://mujocolab.github.io/mjlab/)
-[![License](https://img.shields.io/github/license/mujocolab/mjlab)](https://github.com/mujocolab/mjlab/blob/main/LICENSE)
-[![Nightly Benchmarks](https://img.shields.io/badge/Nightly-Benchmarks-blue)](https://mujocolab.github.io/mjlab/nightly/)
-[![PyPI](https://img.shields.io/pypi/v/mjlab)](https://pypi.org/project/mjlab/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/mjlab?color=blue)](https://pypistats.org/packages/mjlab)
-
-mjlab combines [Isaac Lab](https://github.com/isaac-sim/IsaacLab)'s manager-based API with [MuJoCo Warp](https://github.com/google-deepmind/mujoco_warp), a GPU-accelerated version of [MuJoCo](https://github.com/google-deepmind/mujoco).
-The framework provides composable building blocks for environment design,
-with minimal dependencies and direct access to native MuJoCo data structures.
-
-## Getting Started
-
-mjlab requires an NVIDIA GPU for training. macOS is supported for evaluation only.
-
-**Try it now:**
-
-Run the demo (no installation needed):
+This workspace contains an mjlab integration for the LimX Dynamics HU_D03
+humanoid. The goal is to train a motion-imitation, or mimic, policy with the
+task:
 
 ```bash
-uvx --from mjlab --refresh demo
+Mjlab-Tracking-Flat-HU-D03
 ```
 
-Or try in [Google Colab](https://colab.research.google.com/github/mujocolab/mjlab/blob/main/notebooks/demo.ipynb) (no local setup required).
+The current HU_D03 integration is a practical training prototype. It uses the
+HU_D03 robot description from `HU_D03_description`, registers the robot in
+mjlab's asset zoo, adds a tracking task, and provides a HU_D03 CSV-to-NPZ
+converter.
 
-**Install from source:**
+## What Is Included
+
+### HU_D03 robot asset
+
+The robot config is defined in:
+
+```text
+src/mjlab/asset_zoo/robots/hu_d03/hu_d03_constants.py
+```
+
+It loads:
+
+```text
+HU_D03_description/xml/HU_D03_03.xml
+HU_D03_description/meshes/HU_D03_03
+```
+
+and defines:
+
+- HU_D03 joint order
+- HU_D03 motion joint order
+- HU_D03 initial standing pose
+- position actuators for lower body, ankles, waist, upper body, head, wrists,
+  and hands
+- action scale used by the policy
+
+The HU_D03 model is exported through:
+
+```text
+src/mjlab/asset_zoo/robots/hu_d03/__init__.py
+src/mjlab/asset_zoo/robots/__init__.py
+```
+
+### HU_D03 tracking task
+
+The task config is defined in:
+
+```text
+src/mjlab/tasks/tracking/config/hu_d03/
+```
+
+It registers:
 
 ```bash
-git clone https://github.com/mujocolab/mjlab.git && cd mjlab
-uv run demo
+Mjlab-Tracking-Flat-HU-D03
 ```
 
-For alternative installation methods (PyPI, Docker), see the [Installation Guide](https://mujocolab.github.io/mjlab/main/source/installation.html).
+This is the task used to train a mimic policy for HU_D03.
 
-## Training Examples
+### HU_D03 motion converter
 
-### 1. Velocity Tracking
+The converter is:
 
-Train a Unitree G1 humanoid to follow velocity commands on flat terrain:
+```text
+src/mjlab/scripts/csv_to_npz_hu_d03.py
+```
+
+It converts a HU_D03 motion CSV into the `.npz` motion format used by mjlab
+tracking tasks, and can upload the converted motion to a Weights & Biases
+motion registry.
+
+The CLI entry is:
 
 ```bash
-uv run train Mjlab-Velocity-Flat-Unitree-G1 --env.scene.num-envs 4096
+uv run csv-to-npz-hu-d03
 ```
 
-**Multi-GPU Training:** Scale to multiple GPUs using `--gpu-ids`:
+## Important Limitation
+
+`HU_D03_description` only contains the robot model:
+
+- URDF
+- MJCF/XML
+- USD
+- SRDF
+- STL meshes
+
+It does not contain motion data. A mimic policy cannot be trained without a
+reference motion.
+
+You need one of the following:
+
+- a CSV motion already retargeted to HU_D03
+- a local `motion.npz` compatible with HU_D03
+- a motion retargeting pipeline that converts AMASS/LAFAN1/G1 motions into
+  HU_D03 joint order
+
+## Simplified Training Model
+
+The current HU_D03 integration uses a sanitized/simplified MJCF for training.
+During loading, it removes:
+
+- standalone floor, camera, and light from the vendor XML
+- vendor XML actuators and sensors
+- equality constraints
+- ankle and waist linkage subtrees
+
+The simplified model directly controls the ankle and waist hinge joints with
+position actuators. This is intentional: it makes the model easier to run in
+mjlab and allows the mimic-training pipeline to work first. It is not a
+perfect dynamics replica of the full vendor model.
+
+## Motion CSV Format
+
+The HU_D03 CSV must use this layout:
+
+```text
+base_x, base_y, base_z,
+base_qx, base_qy, base_qz, base_qw,
+joint_0, joint_1, ..., joint_30
+```
+
+The 31 joint columns must follow `HU_D03_MOTION_JOINT_NAMES` from:
+
+```text
+src/mjlab/asset_zoo/robots/hu_d03/hu_d03_constants.py
+```
+
+Current order:
+
+```text
+left_hip_pitch_joint
+left_hip_roll_joint
+left_hip_yaw_joint
+left_knee_joint
+left_ankle_pitch_joint
+left_ankle_roll_joint
+right_hip_pitch_joint
+right_hip_roll_joint
+right_hip_yaw_joint
+right_knee_joint
+right_ankle_pitch_joint
+right_ankle_roll_joint
+waist_yaw_joint
+waist_roll_joint
+waist_pitch_joint
+head_yaw_joint
+head_pitch_joint
+left_shoulder_pitch_joint
+left_shoulder_roll_joint
+left_shoulder_yaw_joint
+left_elbow_joint
+left_wrist_yaw_joint
+left_wrist_pitch_joint
+left_hand_yaw_joint
+right_shoulder_pitch_joint
+right_shoulder_roll_joint
+right_shoulder_yaw_joint
+right_elbow_joint
+right_wrist_yaw_joint
+right_wrist_pitch_joint
+right_hand_yaw_joint
+```
+
+If the CSV joint order is wrong, the reference motion will be wrong and the
+tracking policy will not learn correctly.
+
+## Setup
+
+Install dependencies from the repository root:
 
 ```bash
-uv run train Mjlab-Velocity-Flat-Unitree-G1 \
-  --gpu-ids "[0, 1]" \
-  --env.scene.num-envs 4096
+uv sync
 ```
 
-See the [Distributed Training guide](https://mujocolab.github.io/mjlab/main/source/training/distributed_training.html) for details.
+For training, use an NVIDIA GPU. CPU is only suitable for small smoke tests.
 
-Evaluate a policy while training (fetches latest checkpoint from Weights & Biases):
+If you use Weights & Biases:
 
 ```bash
-uv run play Mjlab-Velocity-Flat-Unitree-G1 --wandb-run-path your-org/mjlab/run-id
+uv run wandb login
 ```
 
-### 2. Motion Imitation
+## Step 1: Convert HU_D03 CSV to Motion NPZ
 
-Train a humanoid to mimic reference motions. See the [motion imitation guide](https://mujocolab.github.io/mjlab/main/source/training/motion_imitation.html) for preprocessing setup.
+Example:
 
 ```bash
-uv run train Mjlab-Tracking-Flat-Unitree-G1 --registry-name your-org/motions/motion-name --env.scene.num-envs 4096
-uv run play Mjlab-Tracking-Flat-Unitree-G1 --wandb-run-path your-org/mjlab/run-id
+uv run csv-to-npz-hu-d03 \
+  --input-file motions/hu_d03_walk.csv \
+  --output-name hu_d03_walk \
+  --input-fps 30 \
+  --output-fps 50 \
+  --device cuda:0 \
+  --render False
 ```
 
-### 3. Sanity-check with Dummy Agents
+The converter replays the CSV motion in the HU_D03 mjlab scene and creates a
+MuJoCo/mjlab-compatible motion file. By default, the shared converter logic
+saves:
 
-Use built-in agents to sanity check your MDP before training:
+```text
+/tmp/motion.npz
+```
+
+and uploads the motion artifact to W&B as:
+
+```text
+your-entity/motions/hu_d03_walk
+```
+
+If you do not want to use W&B for training, copy `/tmp/motion.npz` to a stable
+location after conversion.
+
+## Step 2A: Train from W&B Motion Registry
+
+Use this if the converted motion was uploaded to W&B:
 
 ```bash
-uv run play Mjlab-Your-Task-Id --agent zero  # Sends zero actions
-uv run play Mjlab-Your-Task-Id --agent random  # Sends uniform random actions
+uv run train Mjlab-Tracking-Flat-HU-D03 \
+  --registry-name your-entity/motions/hu_d03_walk \
+  --env.scene.num-envs 1024 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0]"
 ```
 
-When running motion-tracking tasks, add `--registry-name your-org/motions/motion-name` to the command.
-
-
-## Documentation
-
-Full documentation is available at **[mujocolab.github.io/mjlab](https://mujocolab.github.io/mjlab/)**.
-
-## Development
+For two GPUs:
 
 ```bash
-make test          # Run all tests
-make test-fast     # Skip slow tests
-make format        # Format and lint
-make docs          # Build docs locally
+uv run train Mjlab-Tracking-Flat-HU-D03 \
+  --registry-name your-entity/motions/hu_d03_walk \
+  --env.scene.num-envs 1024 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
 ```
 
-For development setup: `uvx pre-commit install`
+If you run out of GPU memory, reduce `--env.scene.num-envs` to `512` or `256`.
 
-## Citation
+## Step 2B: Train from Local Motion NPZ
 
-mjlab is used in published research and open-source robotics projects. See the [Research](https://mujocolab.github.io/mjlab/main/source/research.html) page for publications and projects, or share your own in [Show and Tell](https://github.com/mujocolab/mjlab/discussions/categories/show-and-tell).
+Use this if you have a local `motion.npz`:
 
-If you use mjlab in your research, please consider citing:
-
-```bibtex
-@misc{zakka2026mjlablightweightframeworkgpuaccelerated,
-  title={mjlab: A Lightweight Framework for GPU-Accelerated Robot Learning},
-  author={Kevin Zakka and Qiayuan Liao and Brent Yi and Louis Le Lay and Koushil Sreenath and Pieter Abbeel},
-  year={2026},
-  eprint={2601.22074},
-  archivePrefix={arXiv},
-  primaryClass={cs.RO},
-  url={https://arxiv.org/abs/2601.22074},
-}
+```bash
+uv run train Mjlab-Tracking-Flat-HU-D03 \
+  --env.commands.motion.motion-file motions/hu_d03_walk.npz \
+  --env.scene.num-envs 1024 \
+  --agent.logger tensorboard \
+  --agent.upload-model False \
+  --gpu-ids "[0]"
 ```
 
-## License
+## Step 3: Play a Trained Policy
 
-mjlab is licensed under the [Apache License, Version 2.0](LICENSE).
+Using a local checkpoint and local motion file:
 
-### Third-Party Code
+```bash
+uv run play Mjlab-Tracking-Flat-HU-D03 \
+  --checkpoint-file logs/rsl_rl/hu_d03_tracking/<run_name>/model_XXXX.pt \
+  --motion-file motions/hu_d03_walk.npz \
+  --num-envs 1 \
+  --viewer viser
+```
 
-Some portions of mjlab are forked from external projects:
+Using a W&B run:
 
-- **`src/mjlab/utils/lab_api/`** — Utilities forked from [NVIDIA Isaac
-  Lab](https://github.com/isaac-sim/IsaacLab) (BSD-3-Clause license, see file
-  headers)
+```bash
+uv run play Mjlab-Tracking-Flat-HU-D03 \
+  --wandb-run-path your-entity/mjlab/run-id \
+  --num-envs 1 \
+  --viewer viser
+```
 
-Forked components retain their original licenses. See file headers for details.
+The `viser` viewer opens a local web UI, usually at:
 
-## Acknowledgments
+```text
+http://localhost:8080
+```
 
-mjlab wouldn't exist without the excellent work of the Isaac Lab team, whose API
-design and abstractions mjlab builds upon.
+## Kaggle Notes
 
-Thanks to the MuJoCo Warp team — especially Erik Frey and Taylor Howell — for
-answering our questions, giving helpful feedback, and implementing features
-based on our requests countless times.
+Kaggle is useful for training, but interactive `viser` viewing is limited
+because `localhost:8080` belongs to the Kaggle container. For Kaggle, prefer
+rendering video files or using a manual recorder script.
+
+Example train command on Kaggle:
+
+```python
+!cd /kaggle/working/mjlab && MUJOCO_GL=egl uv run train Mjlab-Tracking-Flat-HU-D03 \
+  --registry-name your-entity/motions/hu_d03_walk \
+  --env.scene.num-envs 512 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
+## Expected Outputs
+
+After successful training, checkpoints are saved under:
+
+```text
+logs/rsl_rl/hu_d03_tracking/<run_name>/model_*.pt
+```
+
+If W&B upload is enabled, the model checkpoints and logs are also available in
+your W&B run.
+
+## Minimal Command Summary
+
+Convert:
+
+```bash
+uv run csv-to-npz-hu-d03 \
+  --input-file motions/hu_d03_walk.csv \
+  --output-name hu_d03_walk \
+  --input-fps 30 \
+  --output-fps 50 \
+  --device cuda:0
+```
+
+Train:
+
+```bash
+uv run train Mjlab-Tracking-Flat-HU-D03 \
+  --registry-name your-entity/motions/hu_d03_walk \
+  --env.scene.num-envs 1024 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0]"
+```
+
+Play:
+
+```bash
+uv run play Mjlab-Tracking-Flat-HU-D03 \
+  --wandb-run-path your-entity/mjlab/run-id \
+  --num-envs 1 \
+  --viewer viser
+```
