@@ -79,6 +79,32 @@ def _remove_named_body_subtrees(parent: ET.Element, names: set[str]) -> None:
     _remove_named_body_subtrees(child, names)
 
 
+def _find_body(parent: ET.Element, name: str) -> ET.Element | None:
+  if parent.tag == "body" and parent.attrib.get("name") == name:
+    return parent
+  for child in parent:
+    found = _find_body(child, name)
+    if found is not None:
+      return found
+  return None
+
+
+def _ensure_site(body: ET.Element, name: str, pos: str) -> None:
+  for child in body:
+    if child.tag == "site" and child.attrib.get("name") == name:
+      return
+  ET.SubElement(
+    body,
+    "site",
+    {
+      "name": name,
+      "pos": pos,
+      "size": "0.01",
+      "rgba": "0 0 1 1",
+    },
+  )
+
+
 def _sanitize_hu_d03_xml() -> str:
   """Return an mjlab-friendly HU_D03 MJCF string.
 
@@ -101,6 +127,12 @@ def _sanitize_hu_d03_xml() -> str:
       if child.tag in {"light", "camera"} or name == "floor":
         worldbody.remove(child)
     _remove_named_body_subtrees(worldbody, _LINKAGE_BODY_NAMES)
+    left_ankle = _find_body(worldbody, "left_ankle_roll_link")
+    right_ankle = _find_body(worldbody, "right_ankle_roll_link")
+    if left_ankle is not None:
+      _ensure_site(left_ankle, "left_foot", "0.018 0 -0.0535")
+    if right_ankle is not None:
+      _ensure_site(right_ankle, "right_foot", "0.018 0 -0.0535")
 
   _remove_children_by_tag(root, "equality")
   _remove_children_by_tag(root, "actuator")

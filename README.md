@@ -80,6 +80,23 @@ The CLI entry is:
 uv run csv-to-npz-hu-d03
 ```
 
+### HU_D03 velocity locomotion task
+
+The velocity task config is defined in:
+
+```text
+src/mjlab/tasks/velocity/config/hu_d03/
+```
+
+It registers:
+
+```bash
+Mjlab-Velocity-Flat-HU-D03
+```
+
+This task trains a locomotion policy from velocity commands and does not need a
+motion CSV.
+
 ## Important Limitation
 
 `HU_D03_description` only contains the robot model:
@@ -340,6 +357,69 @@ Play:
 ```bash
 uv run play Mjlab-Tracking-Flat-HU-D03 \
   --wandb-run-path your-entity/mjlab/run-id \
+  --num-envs 1 \
+  --viewer viser
+```
+
+## HU_D03 Locomotion Policy
+
+To train a locomotion policy instead of a mimic policy, use the velocity task:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03 \
+  --env.scene.num-envs 1024 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0]"
+```
+
+For a quick smoke test:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03 \
+  --env.scene.num-envs 64 \
+  --agent.max-iterations 10 \
+  --agent.logger tensorboard \
+  --agent.upload-model False \
+  --gpu-ids "[0]"
+```
+
+For Kaggle T4x2:
+
+```python
+!cd /kaggle/working/mjlab && MUJOCO_GL=egl uv run train Mjlab-Velocity-Flat-HU-D03 \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 4000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
+If the full command range is too hard at the start, train a forward-only warmup:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03 \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 3000 \
+  --env.commands.twist.rel-standing-envs 0.0 \
+  --env.commands.twist.rel-heading-envs 0.0 \
+  --env.commands.twist.rel-forward-envs 1.0 \
+  --env.commands.twist.ranges.lin-vel-x "(0.25, 0.6)" \
+  --env.commands.twist.ranges.lin-vel-y "(0.0, 0.0)" \
+  --env.commands.twist.ranges.ang-vel-z "(0.0, 0.0)" \
+  --env.curriculum.command-vel.params.velocity-stages.0.lin-vel-x "(0.25, 0.6)" \
+  --env.curriculum.command-vel.params.velocity-stages.0.ang-vel-z "(0.0, 0.0)" \
+  --env.curriculum.command-vel.params.velocity-stages.1.lin-vel-x "(0.25, 0.6)" \
+  --env.curriculum.command-vel.params.velocity-stages.1.ang-vel-z "(0.0, 0.0)" \
+  --env.curriculum.command-vel.params.velocity-stages.2.lin-vel-x "(0.25, 0.6)" \
+  --gpu-ids "[0]"
+```
+
+Play a trained local checkpoint:
+
+```bash
+uv run play Mjlab-Velocity-Flat-HU-D03 \
+  --checkpoint-file logs/rsl_rl/hu_d03_velocity/<run_name>/model_XXXX.pt \
   --num-envs 1 \
   --viewer viser
 ```
