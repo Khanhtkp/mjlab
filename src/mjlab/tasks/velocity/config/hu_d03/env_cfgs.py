@@ -214,15 +214,20 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.curriculum.pop("terrain_levels", None)
 
-  # Keep the G1 flat command distribution/curriculum intact, but bias HU_D03 away
-  # from the stable "standing shuffle" local optimum seen with this robot model.
-  cfg.rewards["track_linear_velocity"].weight = 3.0
-  cfg.rewards["track_angular_velocity"].weight = 1.5
-  cfg.rewards["pose"].weight = 0.7
-  cfg.rewards["action_rate_l2"].weight = -0.06
-  cfg.rewards["air_time"].weight = 0.35
-  cfg.rewards["air_time"].params["command_threshold"] = 0.15
-  cfg.rewards["foot_slip"].weight = -0.25
+  # Keep the G1 flat command distribution/curriculum intact, but tune HU_D03's
+  # incentives so survival cannot plateau as a tiny standing shuffle.
+  cfg.rewards["track_linear_velocity"].weight = 4.5
+  cfg.rewards["track_linear_velocity"].params["std"] = 0.7
+  cfg.rewards["track_angular_velocity"].weight = 1.0
+  cfg.rewards["pose"].weight = 0.45
+  cfg.rewards["action_rate_l2"].weight = -0.02
+  cfg.rewards["air_time"].weight = 0.9
+  cfg.rewards["air_time"].params["command_threshold"] = 0.1
+  cfg.rewards["foot_swing_height"].weight = -0.6
+  cfg.rewards["foot_swing_height"].params["target_height"] = 0.06
+  cfg.rewards["foot_clearance"].weight = -3.0
+  cfg.rewards["foot_clearance"].params["target_height"] = 0.06
+  cfg.rewards["foot_slip"].weight = -0.2
   cfg.rewards["soft_landing"].weight = -5.0e-5
 
   if play:
