@@ -215,18 +215,28 @@ HU_D03_LOWER_BODY_ACTUATOR = BuiltinPositionActuatorCfg(
   armature=HIP_KNEE_ARMATURE,
 )
 
-HU_D03_ANKLE_WAIST_ACTUATOR = BuiltinPositionActuatorCfg(
+HU_D03_ANKLE_ACTUATOR = BuiltinPositionActuatorCfg(
   target_names_expr=(
     ".*_ankle_pitch_joint",
     ".*_ankle_roll_joint",
+  ),
+  # The vendor model drives each ankle through an A/B linkage pair. The
+  # simplified model exposes direct ankle hinges, so give those hinges slightly
+  # more authority than a single linkage motor while keeping the reflected
+  # inertia/stiffness model.
+  stiffness=_stiffness_from_armature(LINKAGE_ARMATURE),
+  damping=_damping_from_armature(LINKAGE_ARMATURE),
+  effort_limit=60.0,
+  armature=LINKAGE_ARMATURE,
+)
+
+HU_D03_WAIST_ROLL_PITCH_ACTUATOR = BuiltinPositionActuatorCfg(
+  target_names_expr=(
     "waist_roll_joint",
     "waist_pitch_joint",
   ),
-  # The vendor model drives these DOFs through A/B linkage motors. The sanitized
-  # model exposes direct hinge targets, so use one linkage motor's reflected
-  # inertia as a conservative effective armature rather than doubling the torque.
   stiffness=_stiffness_from_armature(LINKAGE_ARMATURE),
-  damping=_damping_from_armature(LINKAGE_ARMATURE),
+  damping=_damping_from_armature(LINKAGE_ARMATURE) * 1.2,
   effort_limit=45.0,
   armature=LINKAGE_ARMATURE,
 )
@@ -269,7 +279,8 @@ HU_D03_SMALL_ACTUATOR = BuiltinPositionActuatorCfg(
 HU_D03_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(
     HU_D03_LOWER_BODY_ACTUATOR,
-    HU_D03_ANKLE_WAIST_ACTUATOR,
+    HU_D03_ANKLE_ACTUATOR,
+    HU_D03_WAIST_ROLL_PITCH_ACTUATOR,
     HU_D03_WAIST_YAW_ACTUATOR,
     HU_D03_UPPER_BODY_ACTUATOR,
     HU_D03_SMALL_ACTUATOR,

@@ -1,5 +1,7 @@
 """HU_D03 flat-terrain velocity environment configuration."""
 
+import math
+
 from mjlab.asset_zoo.robots import (
   HU_D03_ACTION_SCALE,
   get_hu_d03_robot_cfg,
@@ -22,6 +24,28 @@ from mjlab.sensor import (
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
+
+
+def _hu_d03_flat_action_scale() -> dict[str, float]:
+  """Return robot-specific action scale multipliers for flat locomotion."""
+  result: dict[str, float] = {}
+  for name, scale in HU_D03_ACTION_SCALE.items():
+    if "ankle" in name:
+      multiplier = 1.2
+    elif "hip_pitch" in name or "knee" in name:
+      multiplier = 1.1
+    elif "hip_roll" in name or "hip_yaw" in name:
+      multiplier = 1.0
+    elif "waist" in name:
+      multiplier = 0.55
+    elif "shoulder" in name or "elbow" in name:
+      multiplier = 0.35
+    elif "head" in name or "wrist" in name or "hand" in name:
+      multiplier = 0.2
+    else:
+      multiplier = 1.0
+    result[name] = scale * multiplier
+  return result
 
 
 def hu_d03_rough_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -213,6 +237,23 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.curriculum.pop("terrain_levels", None)
+
+  joint_pos_action = cfg.actions["joint_pos"]
+  assert isinstance(joint_pos_action, JointPositionActionCfg)
+  joint_pos_action.scale = _hu_d03_flat_action_scale()
+
+  if "push_robot" in cfg.events:
+    cfg.events["push_robot"].interval_range_s = (4.0, 8.0)
+    cfg.events["push_robot"].params["velocity_range"] = {
+      "x": (-0.2, 0.2),
+      "y": (-0.2, 0.2),
+      "z": (-0.15, 0.15),
+      "roll": (-0.2, 0.2),
+      "pitch": (-0.2, 0.2),
+      "yaw": (-0.3, 0.3),
+    }
+
+  cfg.terminations["fell_over"].params["limit_angle"] = math.radians(80.0)
 
   # Keep the G1 flat command distribution/curriculum intact, but tune HU_D03's
   # incentives so survival cannot plateau as a tiny standing shuffle.
