@@ -214,87 +214,21 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.curriculum.pop("terrain_levels", None)
 
-  joint_pos_action = cfg.actions["joint_pos"]
-  assert isinstance(joint_pos_action, JointPositionActionCfg)
-  joint_pos_action.scale = {
-    name: 0.8 * scale for name, scale in HU_D03_ACTION_SCALE.items()
-  }
-
-  twist_cmd = cfg.commands["twist"]
-  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
-  twist_cmd.rel_standing_envs = 0.2
-  twist_cmd.rel_heading_envs = 0.2
-  twist_cmd.rel_forward_envs = 0.35
-  twist_cmd.ranges.lin_vel_x = (-0.5, 0.8)
-  twist_cmd.ranges.lin_vel_y = (-0.35, 0.35)
-  twist_cmd.ranges.ang_vel_z = (-0.3, 0.3)
-
-  if "command_vel" in cfg.curriculum:
-    cfg.curriculum["command_vel"].params["velocity_stages"] = [
-      {
-        "step": 0,
-        "lin_vel_x": (-0.5, 0.8),
-        "lin_vel_y": (-0.35, 0.35),
-        "ang_vel_z": (-0.3, 0.3),
-        "rel_standing_envs": 0.2,
-        "rel_heading_envs": 0.2,
-        "rel_forward_envs": 0.35,
-      },
-      {
-        "step": 1500 * 24,
-        "lin_vel_x": (-0.8, 1.0),
-        "lin_vel_y": (-0.6, 0.6),
-        "ang_vel_z": (-0.4, 0.4),
-        "rel_standing_envs": 0.15,
-        "rel_heading_envs": 0.25,
-        "rel_forward_envs": 0.25,
-      },
-      {
-        "step": 3500 * 24,
-        "lin_vel_x": (-1.0, 1.0),
-        "lin_vel_y": (-1.0, 1.0),
-        "ang_vel_z": (-0.5, 0.5),
-        "rel_standing_envs": 0.1,
-        "rel_heading_envs": 0.3,
-        "rel_forward_envs": 0.2,
-      },
-      {
-        "step": 7000 * 24,
-        "lin_vel_x": (-1.5, 2.0),
-        "lin_vel_y": (-1.0, 1.0),
-        "ang_vel_z": (-0.7, 0.7),
-      },
-    ]
-
-  if "push_robot" in cfg.events:
-    cfg.events["push_robot"].interval_range_s = (2.5, 5.0)
-    cfg.events["push_robot"].params["velocity_range"] = {
-      "x": (-0.25, 0.25),
-      "y": (-0.25, 0.25),
-      "z": (-0.15, 0.15),
-      "roll": (-0.25, 0.25),
-      "pitch": (-0.25, 0.25),
-      "yaw": (-0.35, 0.35),
-    }
-
-  cfg.events["encoder_bias"].params["bias_range"] = (-0.008, 0.008)
-  cfg.events["base_com"].params["ranges"] = {
-    0: (-0.012, 0.012),
-    1: (-0.012, 0.012),
-    2: (-0.015, 0.015),
-  }
-
-  cfg.rewards["alive"] = RewardTermCfg(func=mdp.alive, weight=0.25, params={})
-  cfg.rewards["upright"].weight = 1.2
-  cfg.rewards["action_rate_l2"].weight = -0.15
-  cfg.rewards["body_ang_vel"].weight = -0.07
-  cfg.rewards["angular_momentum"].weight = -0.03
-  cfg.rewards["foot_clearance"].params["target_height"] = 0.06
-  cfg.rewards["foot_swing_height"].params["target_height"] = 0.06
+  # Keep the G1 flat command distribution/curriculum intact, but bias HU_D03 away
+  # from the stable "standing shuffle" local optimum seen with this robot model.
+  cfg.rewards["track_linear_velocity"].weight = 3.0
+  cfg.rewards["track_angular_velocity"].weight = 1.5
+  cfg.rewards["pose"].weight = 0.7
+  cfg.rewards["action_rate_l2"].weight = -0.06
+  cfg.rewards["air_time"].weight = 0.35
+  cfg.rewards["air_time"].params["command_threshold"] = 0.15
+  cfg.rewards["foot_slip"].weight = -0.25
+  cfg.rewards["soft_landing"].weight = -5.0e-5
 
   if play:
+    twist_cmd = cfg.commands["twist"]
+    assert isinstance(twist_cmd, UniformVelocityCommandCfg)
     twist_cmd.ranges.lin_vel_x = (-1.5, 2.0)
-    twist_cmd.ranges.lin_vel_y = (-1.0, 1.0)
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return cfg

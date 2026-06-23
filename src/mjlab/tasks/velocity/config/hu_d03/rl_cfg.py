@@ -16,7 +16,7 @@ def hu_d03_velocity_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       obs_normalization=True,
       distribution_cfg={
         "class_name": "GaussianDistribution",
-        "init_std": 0.7,
+        "init_std": 1.0,
         "std_type": "scalar",
       },
     ),
@@ -29,10 +29,10 @@ def hu_d03_velocity_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       value_loss_coef=1.0,
       use_clipped_value_loss=True,
       clip_param=0.2,
-      entropy_coef=0.005,
+      entropy_coef=0.01,
       num_learning_epochs=5,
       num_mini_batches=4,
-      learning_rate=7.5e-4,
+      learning_rate=1.0e-3,
       schedule="adaptive",
       gamma=0.99,
       lam=0.95,
@@ -43,7 +43,6 @@ def hu_d03_velocity_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     save_interval=50,
     num_steps_per_env=24,
     max_iterations=30_000,
-    clip_actions=1.5,
   )
 
 
