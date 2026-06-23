@@ -54,7 +54,11 @@ def hu_d03_rough_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   feet_ground_cfg = ContactSensorCfg(
     name="feet_ground_contact",
-    primary=ContactMatch(mode="geom", pattern=foot_geom_names, entity="robot"),
+    primary=ContactMatch(
+      mode="subtree",
+      pattern=r"^(left_ankle_roll_link|right_ankle_roll_link)$",
+      entity="robot",
+    ),
     secondary=ContactMatch(mode="body", pattern="terrain"),
     fields=("found", "force"),
     reduce="netforce",
@@ -333,6 +337,59 @@ def hu_d03_flat_self_organized_velocity_env_cfg(
     r".*knee.*": 0.5,
     r".*ankle_pitch.*": 0.35,
     r".*ankle_roll.*": 0.15,
+  }
+
+  return cfg
+
+
+def hu_d03_flat_survival_first_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create a no-stage HU_D03 task that prioritizes episode length first."""
+  cfg = hu_d03_flat_self_organized_velocity_env_cfg(play=play)
+
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+  twist_cmd.rel_standing_envs = 0.5
+  twist_cmd.rel_forward_envs = 0.25
+  twist_cmd.ranges.lin_vel_x = (-0.15, 0.35)
+  twist_cmd.ranges.lin_vel_y = (-0.05, 0.05)
+  twist_cmd.ranges.ang_vel_z = (-0.15, 0.15)
+
+  joint_pos_action = cfg.actions["joint_pos"]
+  assert isinstance(joint_pos_action, JointPositionActionCfg)
+  joint_pos_action.scale = {
+    name: 0.6 * scale for name, scale in HU_D03_ACTION_SCALE.items()
+  }
+
+  cfg.rewards["alive"].weight = 2.0
+  cfg.rewards["track_linear_velocity"].weight = 1.6
+  cfg.rewards["track_angular_velocity"].weight = 0.8
+  cfg.rewards["upright"].weight = 2.5
+  cfg.rewards["pose"].weight = 1.0
+  cfg.rewards["action_rate_l2"].weight = -0.2
+  cfg.rewards["body_ang_vel"].weight = -0.08
+  cfg.rewards["angular_momentum"].weight = -0.03
+  cfg.rewards["foot_slip"].weight = -0.25
+  cfg.rewards["soft_landing"].weight = -1.0e-4
+  cfg.rewards["dof_pos_limits"].weight = -2.0
+
+  if "push_robot" in cfg.events:
+    cfg.events["push_robot"].interval_range_s = (3.0, 6.0)
+    cfg.events["push_robot"].params["velocity_range"] = {
+      "x": (-0.2, 0.2),
+      "y": (-0.2, 0.2),
+      "z": (-0.15, 0.15),
+      "roll": (-0.2, 0.2),
+      "pitch": (-0.2, 0.2),
+      "yaw": (-0.3, 0.3),
+    }
+
+  cfg.events["encoder_bias"].params["bias_range"] = (-0.008, 0.008)
+  cfg.events["base_com"].params["ranges"] = {
+    0: (-0.012, 0.012),
+    1: (-0.012, 0.012),
+    2: (-0.015, 0.015),
   }
 
   return cfg

@@ -7,6 +7,7 @@ import torch
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import ContactSensor
+from mjlab.utils.lab_api.math import quat_apply_inverse
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -27,6 +28,23 @@ def illegal_contact(
     return (force_mag > force_threshold).any(dim=-1).any(dim=-1)  # [B]
   assert data.found is not None
   return torch.any(data.found, dim=-1)
+
+
+def bad_body_orientation(
+  env: ManagerBasedRlEnv,
+  limit_angle: float,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+  """Terminate when a selected body tilts beyond the limit angle."""
+  asset: Entity = env.scene[asset_cfg.name]
+  if asset_cfg.body_ids:
+    body_quat_w = asset.data.body_link_quat_w[:, asset_cfg.body_ids, :].squeeze(1)
+  else:
+    body_quat_w = asset.data.root_link_quat_w
+
+  projected_gravity_b = quat_apply_inverse(body_quat_w, asset.data.gravity_vec_w)
+  cos_tilt = torch.clamp(-projected_gravity_b[:, 2], -1.0, 1.0)
+  return torch.acos(cos_tilt).abs() > limit_angle
 
 
 def out_of_terrain_bounds(

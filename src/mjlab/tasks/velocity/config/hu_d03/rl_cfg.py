@@ -84,3 +84,17 @@ def hu_d03_velocity_self_organized_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   cfg.experiment_name = "hu_d03_velocity_self_organized"
   cfg.max_iterations = 4_000
   return cfg
+
+
+def hu_d03_velocity_survival_first_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """Create PPO config focused on stable HU_D03 episode length growth."""
+  cfg = hu_d03_velocity_ppo_runner_cfg()
+  assert cfg.actor.distribution_cfg is not None
+  cfg.actor.distribution_cfg["init_std"] = 0.45
+  cfg.algorithm.entropy_coef = 0.001
+  cfg.algorithm.learning_rate = 5.0e-4
+  cfg.algorithm.desired_kl = 0.006
+  cfg.clip_actions = 1.0
+  cfg.experiment_name = "hu_d03_velocity_survival_first"
+  cfg.max_iterations = 2_000
+  return cfg

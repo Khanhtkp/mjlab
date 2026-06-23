@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from math import pi
 from pathlib import Path
 
 import mujoco
@@ -63,6 +64,23 @@ _LINKAGE_BODY_NAMES = {
   "waist_A_link",
   "waist_B_link",
 }
+_FOOT_GEOM_NAMES = {"left_foot", "right_foot"}
+
+NATURAL_FREQ = 10.0 * 2.0 * pi
+DAMPING_RATIO = 2.0
+
+HIP_KNEE_ARMATURE = 0.15257125
+LINKAGE_ARMATURE = 0.094889232
+UPPER_BODY_ARMATURE = 0.045760625
+SMALL_JOINT_ARMATURE = 0.010625
+
+
+def _stiffness_from_armature(armature: float) -> float:
+  return armature * NATURAL_FREQ**2
+
+
+def _damping_from_armature(armature: float) -> float:
+  return 2.0 * DAMPING_RATIO * armature * NATURAL_FREQ
 
 
 def _remove_children_by_tag(parent: ET.Element, tag: str) -> None:
@@ -111,6 +129,37 @@ def _zero_geom_margins(root: ET.Element) -> None:
     geom.set("margin", "0")
 
 
+def _configure_training_collisions(root: ET.Element) -> None:
+  """Use G1-style training contacts for the sanitized HU_D03 model.
+
+  HU_D03's vendor MJCF gives every collision primitive condim=3 and relatively high
+  friction. That makes torso, limb, and arm contacts behave like sticky ground
+  contacts during RL. G1 uses rich frictional contact only for feet and simple
+  condim=1 contacts for the rest of the body; mirroring that setup removes a large
+  source of artificial contact constraints without disabling self-collision.
+  """
+  for geom in root.iter("geom"):
+    name = geom.attrib.get("name", "")
+
+    if geom.attrib.get("class") == "visual" or name.startswith("contact_"):
+      geom.set("contype", "0")
+      geom.set("conaffinity", "0")
+      geom.set("group", "1")
+      continue
+
+    geom.set("contype", "1")
+    geom.set("conaffinity", "1")
+    geom.set("margin", "0")
+
+    if name in _FOOT_GEOM_NAMES:
+      geom.set("condim", "3")
+      geom.set("priority", "1")
+      geom.set("friction", "0.6 0.005 0.0005")
+    else:
+      geom.set("condim", "1")
+      geom.set("priority", "0")
+
+
 def _sanitize_hu_d03_xml() -> str:
   """Return an mjlab-friendly HU_D03 MJCF string.
 
@@ -140,6 +189,7 @@ def _sanitize_hu_d03_xml() -> str:
     if right_ankle is not None:
       _ensure_site(right_ankle, "right_foot", "0.018 0 -0.0535")
 
+  _configure_training_collisions(root)
   _zero_geom_margins(root)
   _remove_children_by_tag(root, "equality")
   _remove_children_by_tag(root, "actuator")
@@ -159,9 +209,10 @@ HU_D03_LOWER_BODY_ACTUATOR = BuiltinPositionActuatorCfg(
     ".*_hip_yaw_joint",
     ".*_knee_joint",
   ),
-  stiffness=300.0,
-  damping=30.0,
+  stiffness=_stiffness_from_armature(HIP_KNEE_ARMATURE),
+  damping=_damping_from_armature(HIP_KNEE_ARMATURE),
   effort_limit=120.0,
+  armature=HIP_KNEE_ARMATURE,
 )
 
 HU_D03_ANKLE_WAIST_ACTUATOR = BuiltinPositionActuatorCfg(
@@ -171,16 +222,21 @@ HU_D03_ANKLE_WAIST_ACTUATOR = BuiltinPositionActuatorCfg(
     "waist_roll_joint",
     "waist_pitch_joint",
   ),
-  stiffness=180.0,
-  damping=18.0,
+  # The vendor model drives these DOFs through A/B linkage motors. The sanitized
+  # model exposes direct hinge targets, so use one linkage motor's reflected
+  # inertia as a conservative effective armature rather than doubling the torque.
+  stiffness=_stiffness_from_armature(LINKAGE_ARMATURE),
+  damping=_damping_from_armature(LINKAGE_ARMATURE),
   effort_limit=45.0,
+  armature=LINKAGE_ARMATURE,
 )
 
 HU_D03_WAIST_YAW_ACTUATOR = BuiltinPositionActuatorCfg(
   target_names_expr=("waist_yaw_joint",),
-  stiffness=220.0,
-  damping=22.0,
+  stiffness=_stiffness_from_armature(LINKAGE_ARMATURE),
+  damping=_damping_from_armature(LINKAGE_ARMATURE),
   effort_limit=45.0,
+  armature=LINKAGE_ARMATURE,
 )
 
 HU_D03_UPPER_BODY_ACTUATOR = BuiltinPositionActuatorCfg(
@@ -190,9 +246,10 @@ HU_D03_UPPER_BODY_ACTUATOR = BuiltinPositionActuatorCfg(
     ".*_shoulder_yaw_joint",
     ".*_elbow_joint",
   ),
-  stiffness=120.0,
-  damping=12.0,
+  stiffness=_stiffness_from_armature(UPPER_BODY_ARMATURE),
+  damping=_damping_from_armature(UPPER_BODY_ARMATURE),
   effort_limit=30.0,
+  armature=UPPER_BODY_ARMATURE,
 )
 
 HU_D03_SMALL_ACTUATOR = BuiltinPositionActuatorCfg(
@@ -203,9 +260,10 @@ HU_D03_SMALL_ACTUATOR = BuiltinPositionActuatorCfg(
     ".*_wrist_pitch_joint",
     ".*_hand_yaw_joint",
   ),
-  stiffness=80.0,
-  damping=8.0,
+  stiffness=_stiffness_from_armature(SMALL_JOINT_ARMATURE),
+  damping=_damping_from_armature(SMALL_JOINT_ARMATURE),
   effort_limit=18.0,
+  armature=SMALL_JOINT_ARMATURE,
 )
 
 HU_D03_ARTICULATION = EntityArticulationInfoCfg(
@@ -221,15 +279,14 @@ HU_D03_ARTICULATION = EntityArticulationInfoCfg(
 
 
 HU_D03_STAND_KEYFRAME = EntityCfg.InitialStateCfg(
-  # The vendor MJCF places base_link at z=1.0, but with this crouched stance the
-  # foot collision boxes start about 10 cm above the ground. Lowering the root
-  # prevents every reset from beginning with a drop/impact before learning starts.
-  pos=(0.0, 0.0, 0.901),
+  # Root height is chosen so the foot boxes start on the ground for this mild
+  # crouch. A no-action rollout keeps this pose upright for the full 20 s episode
+  # with less tilt and drift than deeper crouches.
+  pos=(0.0, 0.0, 0.906774),
   joint_pos={
-    ".*": 0.0,
-    ".*_hip_pitch_joint": -0.15,
-    ".*_knee_joint": 0.35,
-    ".*_ankle_pitch_joint": -0.2,
+    ".*_hip_pitch_joint": -0.1,
+    ".*_knee_joint": 0.25,
+    ".*_ankle_pitch_joint": -0.15,
     "left_shoulder_roll_joint": 0.2,
     "right_shoulder_roll_joint": -0.2,
     ".*_elbow_joint": 0.5,
