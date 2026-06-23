@@ -105,6 +105,12 @@ def _ensure_site(body: ET.Element, name: str, pos: str) -> None:
   )
 
 
+def _zero_geom_margins(root: ET.Element) -> None:
+  """MuJoCo Warp MULTICCD does not support non-zero geom margins."""
+  for geom in root.iter("geom"):
+    geom.set("margin", "0")
+
+
 def _sanitize_hu_d03_xml() -> str:
   """Return an mjlab-friendly HU_D03 MJCF string.
 
@@ -134,6 +140,7 @@ def _sanitize_hu_d03_xml() -> str:
     if right_ankle is not None:
       _ensure_site(right_ankle, "right_foot", "0.018 0 -0.0535")
 
+  _zero_geom_margins(root)
   _remove_children_by_tag(root, "equality")
   _remove_children_by_tag(root, "actuator")
   _remove_children_by_tag(root, "sensor")
