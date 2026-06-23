@@ -287,6 +287,57 @@ def hu_d03_flat_forward_stable_velocity_env_cfg(
   return cfg
 
 
+def hu_d03_flat_self_organized_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create a G1-like HU_D03 task without staged command scheduling."""
+  cfg = hu_d03_flat_velocity_env_cfg(play=play)
+
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+  twist_cmd.heading_command = False
+  twist_cmd.ranges.heading = None
+  twist_cmd.rel_standing_envs = 0.35
+  twist_cmd.rel_heading_envs = 0.0
+  twist_cmd.rel_forward_envs = 0.35
+  twist_cmd.rel_world_envs = 0.0
+  twist_cmd.ranges.lin_vel_x = (-0.3, 0.8)
+  twist_cmd.ranges.lin_vel_y = (-0.2, 0.2)
+  twist_cmd.ranges.ang_vel_z = (-0.3, 0.3)
+
+  cfg.curriculum.pop("command_vel", None)
+
+  joint_pos_action = cfg.actions["joint_pos"]
+  assert isinstance(joint_pos_action, JointPositionActionCfg)
+  joint_pos_action.scale = {
+    name: 0.75 * scale for name, scale in HU_D03_ACTION_SCALE.items()
+  }
+
+  cfg.rewards["alive"] = RewardTermCfg(func=mdp.alive, weight=0.25, params={})
+  cfg.rewards["track_linear_velocity"].weight = 2.8
+  cfg.rewards["track_angular_velocity"].weight = 1.5
+  cfg.rewards["upright"].weight = 1.4
+  cfg.rewards["pose"].weight = 0.7
+  cfg.rewards["action_rate_l2"].weight = -0.12
+  cfg.rewards["body_ang_vel"].weight = -0.04
+  cfg.rewards["angular_momentum"].weight = -0.015
+  cfg.rewards["foot_slip"].weight = -0.18
+  cfg.rewards["soft_landing"].weight = -5.0e-5
+
+  cfg.rewards["foot_clearance"].params["target_height"] = 0.05
+  cfg.rewards["foot_swing_height"].params["target_height"] = 0.05
+  cfg.rewards["pose"].params["std_standing"] = {".*": 0.08}
+  cfg.rewards["pose"].params["std_walking"] |= {
+    r".*hip_pitch.*": 0.4,
+    r".*hip_roll.*": 0.2,
+    r".*knee.*": 0.5,
+    r".*ankle_pitch.*": 0.35,
+    r".*ankle_roll.*": 0.15,
+  }
+
+  return cfg
+
+
 def hu_d03_flat_forward_survival_velocity_env_cfg(
   play: bool = False,
 ) -> ManagerBasedRlEnvCfg:
@@ -311,9 +362,11 @@ def hu_d03_flat_forward_survival_velocity_env_cfg(
 
   if not play:
     cfg.curriculum["command_vel"] = CurriculumTermCfg(
-      func=mdp.commands_vel,
+      func=mdp.adaptive_commands_vel,
       params={
         "command_name": "twist",
+        "ema_alpha": 0.08,
+        "min_updates": 10,
         "velocity_stages": [
           {
             "step": 0,
@@ -322,19 +375,25 @@ def hu_d03_flat_forward_survival_velocity_env_cfg(
             "ang_vel_z": (0.0, 0.0),
             "rel_standing_envs": 0.8,
             "rel_forward_envs": 0.0,
+            "advance_episode_length": 850.0,
+            "advance_timeout_rate": 0.6,
           },
           {
-            "step": 1000 * 24,
+            "step": 0,
             "lin_vel_x": (0.05, 0.3),
             "rel_standing_envs": 0.5,
+            "advance_episode_length": 800.0,
+            "advance_timeout_rate": 0.5,
           },
           {
-            "step": 2000 * 24,
+            "step": 0,
             "lin_vel_x": (0.1, 0.45),
             "rel_standing_envs": 0.2,
+            "advance_episode_length": 700.0,
+            "advance_timeout_rate": 0.35,
           },
           {
-            "step": 3000 * 24,
+            "step": 0,
             "lin_vel_x": (0.2, 0.6),
             "rel_standing_envs": 0.0,
           },

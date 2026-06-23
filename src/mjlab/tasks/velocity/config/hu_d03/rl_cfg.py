@@ -70,3 +70,17 @@ def hu_d03_velocity_survival_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   cfg.experiment_name = "hu_d03_velocity_survival"
   cfg.max_iterations = 4_000
   return cfg
+
+
+def hu_d03_velocity_self_organized_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """Create PPO config for G1-like self-organized HU_D03 locomotion."""
+  cfg = hu_d03_velocity_ppo_runner_cfg()
+  assert cfg.actor.distribution_cfg is not None
+  cfg.actor.distribution_cfg["init_std"] = 0.7
+  cfg.algorithm.entropy_coef = 0.005
+  cfg.algorithm.learning_rate = 7.5e-4
+  cfg.algorithm.desired_kl = 0.01
+  cfg.clip_actions = 1.5
+  cfg.experiment_name = "hu_d03_velocity_self_organized"
+  cfg.max_iterations = 4_000
+  return cfg

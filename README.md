@@ -430,12 +430,26 @@ uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Stable \
   --gpu-ids "[0, 1]"
 ```
 
-For a survival-first curriculum similar to the G1 warmup pattern, use the staged
-task. It spends the first 1000 iterations mostly on standing and very slow
-forward commands, then gradually opens the forward velocity range:
+For a survival-first curriculum similar to the G1 warmup pattern, use the adaptive
+task. It starts with mostly standing and very slow forward commands, then opens
+the forward velocity range only when episode-length or timeout-rate performance
+is high enough:
 
 ```bash
 uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Survival \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 4000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
+For a G1-like run without staged command scheduling, use the self-organized task.
+It relies on reward balance, action scale, standing-command sampling, and lower
+policy noise instead of explicit stage transitions:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03-Self-Organized \
   --env.scene.num-envs 1024 \
   --agent.max-iterations 4000 \
   --agent.logger wandb \
