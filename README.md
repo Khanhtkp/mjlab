@@ -398,21 +398,23 @@ For Kaggle T4x2:
 If the full command range is too hard at the start, train a forward-only warmup:
 
 ```bash
-uv run train Mjlab-Velocity-Flat-HU-D03 \
+uv run train Mjlab-Velocity-Flat-HU-D03-Forward \
   --env.scene.num-envs 1024 \
   --agent.max-iterations 3000 \
-  --env.commands.twist.rel-standing-envs 0.0 \
-  --env.commands.twist.rel-heading-envs 0.0 \
-  --env.commands.twist.rel-forward-envs 1.0 \
-  --env.commands.twist.ranges.lin-vel-x "(0.25, 0.6)" \
-  --env.commands.twist.ranges.lin-vel-y "(0.0, 0.0)" \
-  --env.commands.twist.ranges.ang-vel-z "(0.0, 0.0)" \
-  --env.curriculum.command-vel.params.velocity-stages.0.lin-vel-x "(0.25, 0.6)" \
-  --env.curriculum.command-vel.params.velocity-stages.0.ang-vel-z "(0.0, 0.0)" \
-  --env.curriculum.command-vel.params.velocity-stages.1.lin-vel-x "(0.25, 0.6)" \
-  --env.curriculum.command-vel.params.velocity-stages.1.ang-vel-z "(0.0, 0.0)" \
-  --env.curriculum.command-vel.params.velocity-stages.2.lin-vel-x "(0.25, 0.6)" \
   --gpu-ids "[0]"
+```
+
+If the forward-only baseline plateaus around 200-250 steps, try the tuned
+forward-only task. It increases forward velocity tracking, relaxes posture
+regularization, lowers foot swing targets, and reduces motion penalties:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Tuned \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 1000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
 ```
 
 Play a trained local checkpoint:

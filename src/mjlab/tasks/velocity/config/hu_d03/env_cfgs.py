@@ -216,3 +216,56 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return cfg
+
+
+def hu_d03_flat_forward_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create an easier forward-only HU_D03 velocity configuration."""
+  cfg = hu_d03_flat_velocity_env_cfg(play=play)
+
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+  twist_cmd.heading_command = False
+  twist_cmd.ranges.heading = None
+  twist_cmd.rel_standing_envs = 0.0
+  twist_cmd.rel_heading_envs = 0.0
+  twist_cmd.rel_forward_envs = 1.0
+  twist_cmd.ranges.lin_vel_x = (0.2, 0.6)
+  twist_cmd.ranges.lin_vel_y = (0.0, 0.0)
+  twist_cmd.ranges.ang_vel_z = (0.0, 0.0)
+
+  cfg.curriculum.pop("command_vel", None)
+
+  return cfg
+
+
+def hu_d03_flat_forward_tuned_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create a forward-only HU_D03 config with gentler locomotion rewards."""
+  cfg = hu_d03_flat_forward_velocity_env_cfg(play=play)
+
+  cfg.rewards["track_linear_velocity"].weight = 4.0
+  cfg.rewards["pose"].weight = 0.5
+  cfg.rewards["action_rate_l2"].weight = -0.05
+  cfg.rewards["body_ang_vel"].weight = -0.03
+  cfg.rewards["angular_momentum"].weight = -0.01
+
+  cfg.rewards["pose"].params["std_walking"] |= {
+    r".*hip_pitch.*": 0.45,
+    r".*hip_roll.*": 0.2,
+    r".*knee.*": 0.55,
+    r".*ankle_pitch.*": 0.35,
+    r".*ankle_roll.*": 0.15,
+  }
+  cfg.rewards["pose"].params["std_running"] |= {
+    r".*hip_pitch.*": 0.65,
+    r".*knee.*": 0.75,
+    r".*ankle_pitch.*": 0.45,
+  }
+
+  cfg.rewards["foot_clearance"].params["target_height"] = 0.05
+  cfg.rewards["foot_swing_height"].params["target_height"] = 0.05
+
+  return cfg
