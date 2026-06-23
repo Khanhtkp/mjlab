@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from math import pi
-from pathlib import Path
 
 import mujoco
 
@@ -66,7 +65,12 @@ _LINKAGE_BODY_NAMES = {
 }
 _FOOT_GEOM_NAMES = {"left_foot", "right_foot"}
 
-NATURAL_FREQ = 10.0 * 2.0 * pi
+# HU_D03 has substantially larger reflected rotor inertia than G1. Using G1's
+# 10 Hz bandwidth makes its direct-joint training model several times stiffer
+# while leaving only a few degrees of policy action authority. A 4 Hz bandwidth
+# keeps the same critically damped controller design while bringing lower-body
+# gains and usable position-target ranges into the same regime as G1.
+NATURAL_FREQ = 4.0 * 2.0 * pi
 DAMPING_RATIO = 2.0
 
 HIP_KNEE_ARMATURE = 0.15257125
@@ -290,17 +294,17 @@ HU_D03_ARTICULATION = EntityArticulationInfoCfg(
 
 
 HU_D03_STAND_KEYFRAME = EntityCfg.InitialStateCfg(
-  # Root height is chosen so the foot boxes start on the ground for this mild
-  # crouch. A no-action rollout keeps this pose upright for the full 20 s episode
-  # with less tilt and drift than deeper crouches.
-  pos=(0.0, 0.0, 0.906774),
+  # The crouch gives the policy enough knee travel for weight transfer and
+  # single-support locomotion. Root height is computed from the sanitized foot
+  # box geometry so both soles start on the ground.
+  pos=(0.0, 0.0, 0.886854),
   joint_pos={
-    ".*_hip_pitch_joint": -0.1,
-    ".*_knee_joint": 0.25,
-    ".*_ankle_pitch_joint": -0.15,
+    ".*_hip_pitch_joint": -0.25,
+    ".*_knee_joint": 0.55,
+    ".*_ankle_pitch_joint": -0.3,
     "left_shoulder_roll_joint": 0.2,
     "right_shoulder_roll_joint": -0.2,
-    ".*_elbow_joint": 0.5,
+    ".*_elbow_joint": -0.5,
   },
   joint_vel={".*": 0.0},
 )

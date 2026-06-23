@@ -9,8 +9,12 @@ import torch
 
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
-from mjlab.sensor import RayCastData, RayCastSensor
-from mjlab.tasks.velocity.mdp.rewards import upright
+from mjlab.sensor import RayCastData, RayCastSensor, TerrainHeightSensor
+from mjlab.tasks.velocity.mdp.rewards import (
+  commanded_single_foot_lift,
+  linear_velocity_error_huber,
+  upright,
+)
 from mjlab.utils.lab_api.math import quat_from_euler_xyz
 
 
@@ -188,3 +192,115 @@ def test_batch_consistency():
   assert r[1].item() > 0.99
   assert r[2].item() < 0.7
   assert r[3].item() > 0.99
+
+
+def _make_velocity_error_env(
+  command: torch.Tensor,
+  actual: torch.Tensor,
+) -> MagicMock:
+  asset = MagicMock()
+  asset.data.root_link_lin_vel_b = actual
+
+  env = MagicMock()
+  env.scene = {"robot": asset}
+  env.command_manager.get_command.return_value = command
+  env.extras = {"log": {}}
+  return env
+
+
+def test_linear_velocity_error_huber_zero_at_target():
+  command = torch.tensor([[0.8, -0.2, 0.0]])
+  env = _make_velocity_error_env(command, command.clone())
+
+  cost = linear_velocity_error_huber(env, command_name="twist")
+
+  torch.testing.assert_close(cost, torch.zeros(1))
+  assert env.extras["log"]["Metrics/twist/instant_error_vel_xy"] == 0.0
+
+
+def test_linear_velocity_error_huber_penalizes_large_error():
+  command = torch.tensor([[1.0, 0.0, 0.0]])
+  actual = torch.zeros_like(command)
+  env = _make_velocity_error_env(command, actual)
+
+  cost = linear_velocity_error_huber(
+    env,
+    command_name="twist",
+    beta=0.25,
+    tolerance=0.05,
+  )
+
+  torch.testing.assert_close(cost, torch.tensor([0.825]))
+  assert env.extras["log"]["Metrics/twist/instant_error_vel_xy"] == 1.0
+
+
+def test_linear_velocity_error_huber_ignores_standing_commands():
+  command = torch.zeros(1, 3)
+  actual = torch.tensor([[0.5, 0.0, 0.0]])
+  env = _make_velocity_error_env(command, actual)
+
+  cost = linear_velocity_error_huber(
+    env,
+    command_name="twist",
+    command_threshold=0.1,
+  )
+
+  torch.testing.assert_close(cost, torch.zeros(1))
+
+
+def _make_foot_lift_env(
+  heights: torch.Tensor,
+  command: torch.Tensor,
+) -> MagicMock:
+  sensor = MagicMock(spec=TerrainHeightSensor)
+  sensor.data.heights = heights
+
+  env = MagicMock()
+  env.scene = {"foot_height_scan": sensor}
+  env.command_manager.get_command.return_value = command
+  return env
+
+
+def test_commanded_single_foot_lift_rewards_single_support():
+  env = _make_foot_lift_env(
+    heights=torch.tensor([[0.06, 0.0]]),
+    command=torch.tensor([[0.8, 0.0, 0.0]]),
+  )
+
+  reward = commanded_single_foot_lift(
+    env,
+    height_sensor_name="foot_height_scan",
+    command_name="twist",
+  )
+
+  torch.testing.assert_close(reward, torch.ones(1))
+
+
+def test_commanded_single_foot_lift_rejects_double_lift():
+  env = _make_foot_lift_env(
+    heights=torch.tensor([[0.06, 0.06]]),
+    command=torch.tensor([[0.8, 0.0, 0.0]]),
+  )
+
+  reward = commanded_single_foot_lift(
+    env,
+    height_sensor_name="foot_height_scan",
+    command_name="twist",
+  )
+
+  assert reward.item() < 0.001
+
+
+def test_commanded_single_foot_lift_ignores_standing_command():
+  env = _make_foot_lift_env(
+    heights=torch.tensor([[0.06, 0.0]]),
+    command=torch.zeros(1, 3),
+  )
+
+  reward = commanded_single_foot_lift(
+    env,
+    height_sensor_name="foot_height_scan",
+    command_name="twist",
+  )
+
+  torch.testing.assert_close(reward, torch.zeros(1))

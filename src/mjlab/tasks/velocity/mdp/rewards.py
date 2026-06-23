@@ -49,6 +49,40 @@ def track_linear_velocity(
   return torch.exp(-lin_vel_error / std**2)
 
 
+def linear_velocity_error_huber(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  beta: float = 0.25,
+  tolerance: float = 0.05,
+  command_threshold: float = 0.1,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+  """Penalize commanded XY velocity error with a robust Huber loss.
+
+  The tolerance avoids fighting small tracking noise, while the linear tail keeps
+  a useful gradient when the policy is far from the commanded velocity. Standing
+  commands are excluded so this term does not destabilize quiet balance.
+  """
+  if beta <= 0.0:
+    raise ValueError(f"beta must be positive, got {beta}.")
+
+  asset: Entity = env.scene[asset_cfg.name]
+  command = env.command_manager.get_command(command_name)
+  assert command is not None, f"Command '{command_name}' not found."
+
+  error = torch.norm(command[:, :2] - asset.data.root_link_lin_vel_b[:, :2], dim=1)
+  env.extras["log"]["Metrics/twist/instant_error_vel_xy"] = torch.mean(error)
+
+  excess_error = torch.clamp(error - tolerance, min=0.0)
+  quadratic = torch.clamp(excess_error, max=beta)
+  linear = excess_error - quadratic
+  cost = 0.5 * torch.square(quadratic) / beta + linear
+
+  command_speed = torch.norm(command[:, :2], dim=1)
+  active = (command_speed > command_threshold).float()
+  return cost * active
+
+
 def track_angular_velocity(
   env: ManagerBasedRlEnv,
   std: float,
@@ -241,6 +275,44 @@ def feet_air_time(
       scale = (total_command > command_threshold).float()
       reward *= scale
   return reward
+
+
+def commanded_single_foot_lift(
+  env: ManagerBasedRlEnv,
+  height_sensor_name: str,
+  command_name: str,
+  target_height: float = 0.06,
+  support_tolerance: float = 0.02,
+  command_threshold: float = 0.1,
+) -> torch.Tensor:
+  """Reward lifting one foot while keeping the other near the terrain.
+
+  Unlike air-time and landing rewards, this term is dense before a complete
+  step exists. The lower foot acts as the support-foot signal, so lifting both
+  feet together does not produce the same reward.
+  """
+  if target_height <= 0.0:
+    raise ValueError(f"target_height must be positive, got {target_height}.")
+  if support_tolerance <= 0.0:
+    raise ValueError(f"support_tolerance must be positive, got {support_tolerance}.")
+
+  height_sensor = env.scene[height_sensor_name]
+  assert isinstance(height_sensor, TerrainHeightSensor), (
+    "commanded_single_foot_lift requires a TerrainHeightSensor, "
+    f"got {type(height_sensor).__name__}"
+  )
+  command = env.command_manager.get_command(command_name)
+  assert command is not None, f"Command '{command_name}' not found."
+
+  foot_heights = torch.clamp(height_sensor.data.heights, min=0.0)
+  swing_height = torch.max(foot_heights, dim=1).values
+  support_height = torch.min(foot_heights, dim=1).values
+
+  lift_score = torch.clamp(swing_height / target_height, min=0.0, max=1.0)
+  support_score = torch.exp(-torch.square(support_height / support_tolerance))
+  command_speed = torch.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])
+  active = (command_speed > command_threshold).float()
+  return lift_score * support_score * active
 
 
 def feet_clearance(

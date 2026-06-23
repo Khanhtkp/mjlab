@@ -242,28 +242,47 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   assert isinstance(joint_pos_action, JointPositionActionCfg)
   joint_pos_action.scale = _hu_d03_flat_action_scale()
 
-  if "push_robot" in cfg.events:
-    cfg.events["push_robot"].interval_range_s = (4.0, 8.0)
-    cfg.events["push_robot"].params["velocity_range"] = {
-      "x": (-0.2, 0.2),
-      "y": (-0.2, 0.2),
-      "z": (-0.15, 0.15),
-      "roll": (-0.2, 0.2),
-      "pitch": (-0.2, 0.2),
-      "yaw": (-0.3, 0.3),
-    }
+  # Keep the full G1 flat-task difficulty: identical pushes, command sampling,
+  # domain randomization, and fall angle. Only robot-specific dynamics and
+  # rewards are tuned below.
+  cfg.terminations["fell_over"].params["limit_angle"] = math.radians(70.0)
 
-  cfg.terminations["fell_over"].params["limit_angle"] = math.radians(80.0)
-
-  # Keep the G1 flat command distribution/curriculum intact, but tune HU_D03's
-  # incentives so survival cannot plateau as a tiny standing shuffle.
+  # Keep the G1 flat command distribution/curriculum intact. A broad tracking
+  # reward provides exploration gradient, while the precision reward and Huber
+  # cost prevent long-lived standing policies from ignoring velocity commands.
   cfg.rewards["track_linear_velocity"].weight = 4.5
-  cfg.rewards["track_linear_velocity"].params["std"] = 0.7
+  cfg.rewards["track_linear_velocity"].params["std"] = 0.5
+  cfg.rewards["track_linear_velocity_precision"] = RewardTermCfg(
+    func=mdp.track_linear_velocity,
+    weight=2.0,
+    params={"command_name": "twist", "std": 0.25},
+  )
+  cfg.rewards["linear_velocity_error"] = RewardTermCfg(
+    func=mdp.linear_velocity_error_huber,
+    weight=-2.5,
+    params={
+      "command_name": "twist",
+      "beta": 0.25,
+      "tolerance": 0.05,
+      "command_threshold": 0.1,
+    },
+  )
   cfg.rewards["track_angular_velocity"].weight = 1.0
-  cfg.rewards["pose"].weight = 0.45
+  cfg.rewards["pose"].weight = 0.3
   cfg.rewards["action_rate_l2"].weight = -0.02
   cfg.rewards["air_time"].weight = 0.9
   cfg.rewards["air_time"].params["command_threshold"] = 0.1
+  cfg.rewards["single_foot_lift"] = RewardTermCfg(
+    func=mdp.commanded_single_foot_lift,
+    weight=1.0,
+    params={
+      "height_sensor_name": "foot_height_scan",
+      "command_name": "twist",
+      "target_height": 0.06,
+      "support_tolerance": 0.02,
+      "command_threshold": 0.1,
+    },
+  )
   cfg.rewards["foot_swing_height"].weight = -0.6
   cfg.rewards["foot_swing_height"].params["target_height"] = 0.06
   cfg.rewards["foot_clearance"].weight = -3.0

@@ -4,7 +4,7 @@ import pytest
 
 from mjlab.asset_zoo.robots import G1_ACTION_SCALE, GO1_ACTION_SCALE
 from mjlab.envs.mdp.actions import JointPositionActionCfg
-from mjlab.tasks.registry import list_tasks, load_env_cfg
+from mjlab.tasks.registry import list_tasks, load_env_cfg, load_rl_cfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 
@@ -197,3 +197,37 @@ def test_go1_velocity_has_correct_action_scale(
     assert joint_pos_action.scale == GO1_ACTION_SCALE, (
       f"Task {task_id} action scale mismatch, expected GO1_ACTION_SCALE"
     )
+
+
+def test_hu_d03_flat_matches_g1_task_difficulty() -> None:
+  """HU_D03 keeps G1 command, push, termination, and PPO difficulty."""
+  hu_cfg = load_env_cfg("Mjlab-Velocity-Flat-HU-D03")
+  g1_cfg = load_env_cfg("Mjlab-Velocity-Flat-Unitree-G1")
+
+  hu_cmd = hu_cfg.commands["twist"]
+  g1_cmd = g1_cfg.commands["twist"]
+  assert isinstance(hu_cmd, UniformVelocityCommandCfg)
+  assert isinstance(g1_cmd, UniformVelocityCommandCfg)
+  assert hu_cmd.resampling_time_range == g1_cmd.resampling_time_range
+  assert hu_cmd.ranges == g1_cmd.ranges
+  assert hu_cmd.rel_standing_envs == g1_cmd.rel_standing_envs
+  assert hu_cmd.rel_heading_envs == g1_cmd.rel_heading_envs
+  assert hu_cmd.rel_forward_envs == g1_cmd.rel_forward_envs
+
+  assert hu_cfg.events["push_robot"].interval_range_s == (
+    g1_cfg.events["push_robot"].interval_range_s
+  )
+  assert (
+    hu_cfg.events["push_robot"].params["velocity_range"]
+    == (g1_cfg.events["push_robot"].params["velocity_range"])
+  )
+  assert (
+    hu_cfg.terminations["fell_over"].params["limit_angle"]
+    == (g1_cfg.terminations["fell_over"].params["limit_angle"])
+  )
+
+  hu_rl = load_rl_cfg("Mjlab-Velocity-Flat-HU-D03")
+  g1_rl = load_rl_cfg("Mjlab-Velocity-Flat-Unitree-G1")
+  assert hu_rl.clip_actions == g1_rl.clip_actions
+  assert hu_rl.actor.distribution_cfg == g1_rl.actor.distribution_cfg
+  assert hu_rl.algorithm.entropy_coef == g1_rl.algorithm.entropy_coef
