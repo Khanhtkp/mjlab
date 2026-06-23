@@ -221,7 +221,10 @@ HU_D03_ARTICULATION = EntityArticulationInfoCfg(
 
 
 HU_D03_STAND_KEYFRAME = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 1.0),
+  # The vendor MJCF places base_link at z=1.0, but with this crouched stance the
+  # foot collision boxes start about 10 cm above the ground. Lowering the root
+  # prevents every reset from beginning with a drop/impact before learning starts.
+  pos=(0.0, 0.0, 0.901),
   joint_pos={
     ".*": 0.0,
     ".*_hip_pitch_joint": -0.15,

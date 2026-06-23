@@ -457,6 +457,19 @@ uv run train Mjlab-Velocity-Flat-HU-D03-Self-Organized \
   --gpu-ids "[0, 1]"
 ```
 
+If episode length plateaus and survival is the only priority, use the survival-first
+variant. It has no staged command schedule, but uses easier commands, stronger
+survival/upright/smoothness rewards, gentler disturbances, and lower policy noise:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03-Survival-First \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 2000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
 Play a trained local checkpoint:
 
 ```bash
