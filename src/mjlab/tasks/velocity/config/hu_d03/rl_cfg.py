@@ -44,3 +44,29 @@ def hu_d03_velocity_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     num_steps_per_env=24,
     max_iterations=30_000,
   )
+
+
+def hu_d03_velocity_stable_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """Create a lower-noise PPO config for stabilizing HU_D03 locomotion."""
+  cfg = hu_d03_velocity_ppo_runner_cfg()
+  assert cfg.actor.distribution_cfg is not None
+  cfg.actor.distribution_cfg["init_std"] = 0.7
+  cfg.algorithm.entropy_coef = 0.005
+  cfg.algorithm.learning_rate = 7.5e-4
+  cfg.clip_actions = 1.5
+  cfg.experiment_name = "hu_d03_velocity_stable"
+  return cfg
+
+
+def hu_d03_velocity_survival_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+  """Create a low-noise PPO config for survival-first HU_D03 training."""
+  cfg = hu_d03_velocity_ppo_runner_cfg()
+  assert cfg.actor.distribution_cfg is not None
+  cfg.actor.distribution_cfg["init_std"] = 0.5
+  cfg.algorithm.entropy_coef = 0.002
+  cfg.algorithm.learning_rate = 5.0e-4
+  cfg.algorithm.desired_kl = 0.008
+  cfg.clip_actions = 1.0
+  cfg.experiment_name = "hu_d03_velocity_survival"
+  cfg.max_iterations = 4_000
+  return cfg

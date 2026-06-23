@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, NotRequired, TypedDict, cast
 
 import torch
 
@@ -17,9 +17,13 @@ _DEFAULT_SCENE_CFG = SceneEntityCfg("robot")
 
 class VelocityStage(TypedDict):
   step: int
-  lin_vel_x: tuple[float, float] | None
-  lin_vel_y: tuple[float, float] | None
-  ang_vel_z: tuple[float, float] | None
+  lin_vel_x: NotRequired[tuple[float, float] | None]
+  lin_vel_y: NotRequired[tuple[float, float] | None]
+  ang_vel_z: NotRequired[tuple[float, float] | None]
+  rel_standing_envs: NotRequired[float | None]
+  rel_heading_envs: NotRequired[float | None]
+  rel_forward_envs: NotRequired[float | None]
+  rel_world_envs: NotRequired[float | None]
 
 
 def terrain_levels_vel(
@@ -98,6 +102,14 @@ def commands_vel(
         cfg.ranges.lin_vel_y = stage["lin_vel_y"]
       if "ang_vel_z" in stage and stage["ang_vel_z"] is not None:
         cfg.ranges.ang_vel_z = stage["ang_vel_z"]
+      if "rel_standing_envs" in stage and stage["rel_standing_envs"] is not None:
+        cfg.rel_standing_envs = stage["rel_standing_envs"]
+      if "rel_heading_envs" in stage and stage["rel_heading_envs"] is not None:
+        cfg.rel_heading_envs = stage["rel_heading_envs"]
+      if "rel_forward_envs" in stage and stage["rel_forward_envs"] is not None:
+        cfg.rel_forward_envs = stage["rel_forward_envs"]
+      if "rel_world_envs" in stage and stage["rel_world_envs"] is not None:
+        cfg.rel_world_envs = stage["rel_world_envs"]
   return {
     "lin_vel_x_min": torch.tensor(cfg.ranges.lin_vel_x[0]),
     "lin_vel_x_max": torch.tensor(cfg.ranges.lin_vel_x[1]),
@@ -105,4 +117,8 @@ def commands_vel(
     "lin_vel_y_max": torch.tensor(cfg.ranges.lin_vel_y[1]),
     "ang_vel_z_min": torch.tensor(cfg.ranges.ang_vel_z[0]),
     "ang_vel_z_max": torch.tensor(cfg.ranges.ang_vel_z[1]),
+    "rel_standing_envs": torch.tensor(cfg.rel_standing_envs),
+    "rel_heading_envs": torch.tensor(cfg.rel_heading_envs),
+    "rel_forward_envs": torch.tensor(cfg.rel_forward_envs),
+    "rel_world_envs": torch.tensor(cfg.rel_world_envs),
   }

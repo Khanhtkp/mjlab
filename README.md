@@ -417,6 +417,32 @@ uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Tuned \
   --gpu-ids "[0, 1]"
 ```
 
+If the tuned task becomes too aggressive or regresses after improving, try the
+stable variant. It keeps push disturbances enabled, uses lower policy noise,
+clips extreme actions, and shifts reward weight toward smoother survival:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Stable \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 1000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
+For a survival-first curriculum similar to the G1 warmup pattern, use the staged
+task. It spends the first 1000 iterations mostly on standing and very slow
+forward commands, then gradually opens the forward velocity range:
+
+```bash
+uv run train Mjlab-Velocity-Flat-HU-D03-Forward-Survival \
+  --env.scene.num-envs 1024 \
+  --agent.max-iterations 4000 \
+  --agent.logger wandb \
+  --agent.upload-model True \
+  --gpu-ids "[0, 1]"
+```
+
 Play a trained local checkpoint:
 
 ```bash

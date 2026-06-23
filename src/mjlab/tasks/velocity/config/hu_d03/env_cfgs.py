@@ -7,6 +7,7 @@ from mjlab.asset_zoo.robots import (
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp.actions import JointPositionActionCfg
+from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.sensor import (
@@ -267,5 +268,78 @@ def hu_d03_flat_forward_tuned_velocity_env_cfg(
 
   cfg.rewards["foot_clearance"].params["target_height"] = 0.05
   cfg.rewards["foot_swing_height"].params["target_height"] = 0.05
+
+  return cfg
+
+
+def hu_d03_flat_forward_stable_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create a smoother forward-only HU_D03 config for post-warmup tuning."""
+  cfg = hu_d03_flat_forward_tuned_velocity_env_cfg(play=play)
+
+  cfg.rewards["track_linear_velocity"].weight = 3.5
+  cfg.rewards["upright"].weight = 1.2
+  cfg.rewards["action_rate_l2"].weight = -0.08
+  cfg.rewards["foot_slip"].weight = -0.15
+  cfg.rewards["soft_landing"].weight = -3.0e-5
+
+  return cfg
+
+
+def hu_d03_flat_forward_survival_velocity_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create a survival-first HU_D03 curriculum before forward tracking."""
+  cfg = hu_d03_flat_forward_stable_velocity_env_cfg(play=play)
+
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+  twist_cmd.rel_standing_envs = 0.8
+  twist_cmd.rel_forward_envs = 0.0
+  twist_cmd.ranges.lin_vel_x = (0.0, 0.15)
+  twist_cmd.ranges.lin_vel_y = (0.0, 0.0)
+  twist_cmd.ranges.ang_vel_z = (0.0, 0.0)
+
+  cfg.rewards["alive"] = RewardTermCfg(func=mdp.alive, weight=0.5, params={})
+  cfg.rewards["track_linear_velocity"].weight = 3.0
+  cfg.rewards["upright"].weight = 1.5
+  cfg.rewards["pose"].weight = 0.7
+  cfg.rewards["action_rate_l2"].weight = -0.1
+  cfg.rewards["foot_slip"].weight = -0.2
+  cfg.rewards["soft_landing"].weight = -5.0e-5
+
+  if not play:
+    cfg.curriculum["command_vel"] = CurriculumTermCfg(
+      func=mdp.commands_vel,
+      params={
+        "command_name": "twist",
+        "velocity_stages": [
+          {
+            "step": 0,
+            "lin_vel_x": (0.0, 0.15),
+            "lin_vel_y": (0.0, 0.0),
+            "ang_vel_z": (0.0, 0.0),
+            "rel_standing_envs": 0.8,
+            "rel_forward_envs": 0.0,
+          },
+          {
+            "step": 1000 * 24,
+            "lin_vel_x": (0.05, 0.3),
+            "rel_standing_envs": 0.5,
+          },
+          {
+            "step": 2000 * 24,
+            "lin_vel_x": (0.1, 0.45),
+            "rel_standing_envs": 0.2,
+          },
+          {
+            "step": 3000 * 24,
+            "lin_vel_x": (0.2, 0.6),
+            "rel_standing_envs": 0.0,
+          },
+        ],
+      },
+    )
 
   return cfg

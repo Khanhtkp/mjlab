@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
+def alive(env: ManagerBasedRlEnv) -> torch.Tensor:
+  """Reward each non-terminated step to encourage survival."""
+  return torch.ones(env.num_envs, device=env.device)
+
+
 def track_linear_velocity(
   env: ManagerBasedRlEnv,
   std: float,
