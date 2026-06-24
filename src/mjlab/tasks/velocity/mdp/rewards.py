@@ -315,6 +315,116 @@ def commanded_single_foot_lift(
   return lift_score * support_score * active
 
 
+def support_foot_com_alignment(
+  env: ManagerBasedRlEnv,
+  sensor_name: str,
+  com_sensor_name: str,
+  command_name: str,
+  lateral_std: float = 0.06,
+  command_threshold: float = 0.1,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+  """Reward placing the whole-body COM above the supporting foot.
+
+  This term is active only during single support. It supplies the missing
+  weight-transfer signal that foot-height rewards cannot express.
+  """
+  if lateral_std <= 0.0:
+    raise ValueError(f"lateral_std must be positive, got {lateral_std}.")
+
+  asset: Entity = env.scene[asset_cfg.name]
+  contact_sensor: ContactSensor = env.scene[sensor_name]
+  com_sensor: BuiltinSensor = env.scene[com_sensor_name]
+  command = env.command_manager.get_command(command_name)
+  assert command is not None, f"Command '{command_name}' not found."
+  assert contact_sensor.data.found is not None
+
+  contacts = contact_sensor.data.found > 0
+  single_support = contacts.sum(dim=1) == 1
+  support_weights = contacts.float()
+  support_pos_w = torch.sum(
+    asset.data.site_pos_w[:, asset_cfg.site_ids, :] * support_weights.unsqueeze(-1),
+    dim=1,
+  )
+  com_to_support_w = com_sensor.data - support_pos_w
+  com_to_support_b = quat_apply_inverse(
+    asset.data.root_link_quat_w,
+    com_to_support_w,
+  )
+  lateral_error = torch.abs(com_to_support_b[:, 1])
+
+  valid = single_support.float()
+  mean_error = torch.sum(lateral_error * valid) / torch.clamp(valid.sum(), min=1.0)
+  env.extras["log"]["Metrics/support_com_lateral_error"] = mean_error
+
+  command_speed = torch.norm(command[:, :2], dim=1) + torch.abs(command[:, 2])
+  active = (command_speed > command_threshold).float()
+  return torch.exp(-torch.square(lateral_error / lateral_std)) * valid * active
+
+
+def feet_lateral_separation(
+  env: ManagerBasedRlEnv,
+  minimum_separation: float = 0.12,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+  """Penalize a narrow or crossed stance in the robot body frame."""
+  if minimum_separation <= 0.0:
+    raise ValueError(f"minimum_separation must be positive, got {minimum_separation}.")
+
+  asset: Entity = env.scene[asset_cfg.name]
+  foot_pos_w = asset.data.site_pos_w[:, asset_cfg.site_ids, :]
+  if foot_pos_w.shape[1] != 2:
+    raise ValueError(
+      "feet_lateral_separation requires exactly two foot sites, "
+      f"got {foot_pos_w.shape[1]}."
+    )
+  foot_delta_w = foot_pos_w[:, 0, :] - foot_pos_w[:, 1, :]
+  foot_delta_b = quat_apply_inverse(asset.data.root_link_quat_w, foot_delta_w)
+  separation = foot_delta_b[:, 1]
+  env.extras["log"]["Metrics/foot_lateral_separation"] = torch.mean(separation)
+  return torch.square(
+    torch.clamp((minimum_separation - separation) / minimum_separation, min=0.0)
+  )
+
+
+def swing_foot_velocity_alignment(
+  env: ManagerBasedRlEnv,
+  sensor_name: str,
+  command_name: str,
+  command_threshold: float = 0.1,
+  velocity_scale: float = 1.0,
+  asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+  """Reward swing-foot velocity that points along the linear command."""
+  if velocity_scale <= 0.0:
+    raise ValueError(f"velocity_scale must be positive, got {velocity_scale}.")
+
+  asset: Entity = env.scene[asset_cfg.name]
+  contact_sensor: ContactSensor = env.scene[sensor_name]
+  command = env.command_manager.get_command(command_name)
+  assert command is not None, f"Command '{command_name}' not found."
+  assert contact_sensor.data.found is not None
+
+  foot_vel_w = asset.data.site_lin_vel_w[:, asset_cfg.site_ids, :]
+  root_quat = asset.data.root_link_quat_w.unsqueeze(1).expand(
+    -1, foot_vel_w.shape[1], -1
+  )
+  foot_vel_b = quat_apply_inverse(root_quat, foot_vel_w)
+  command_xy = command[:, :2]
+  command_speed = torch.norm(command_xy, dim=1)
+  command_dir = command_xy / torch.clamp(command_speed.unsqueeze(1), min=1.0e-6)
+  directional_speed = torch.sum(
+    foot_vel_b[:, :, :2] * command_dir.unsqueeze(1),
+    dim=-1,
+  )
+  in_air = (contact_sensor.data.found == 0).float()
+  aligned_speed = torch.clamp(directional_speed / velocity_scale, min=0.0, max=1.0)
+  reward = torch.sum(aligned_speed * in_air, dim=1)
+  active = (command_speed > command_threshold).float()
+  env.extras["log"]["Metrics/swing_velocity_alignment"] = torch.mean(reward * active)
+  return reward * active
+
+
 def feet_clearance(
   env: ManagerBasedRlEnv,
   target_height: float,

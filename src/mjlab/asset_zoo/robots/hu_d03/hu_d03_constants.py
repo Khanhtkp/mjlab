@@ -63,7 +63,10 @@ _LINKAGE_BODY_NAMES = {
   "waist_A_link",
   "waist_B_link",
 }
-_FOOT_GEOM_NAMES = {"left_foot", "right_foot"}
+HU_D03_FOOT_GEOM_NAMES = tuple(
+  f"{side}_foot{index}_collision" for side in ("left", "right") for index in range(1, 8)
+)
+_FOOT_GEOM_NAMES = set(HU_D03_FOOT_GEOM_NAMES)
 
 # HU_D03 has substantially larger reflected rotor inertia than G1. Using G1's
 # 10 Hz bandwidth makes its direct-joint training model several times stiffer
@@ -114,6 +117,7 @@ def _find_body(parent: ET.Element, name: str) -> ET.Element | None:
 def _ensure_site(body: ET.Element, name: str, pos: str) -> None:
   for child in body:
     if child.tag == "site" and child.attrib.get("name") == name:
+      child.set("pos", pos)
       return
   ET.SubElement(
     body,
@@ -125,6 +129,28 @@ def _ensure_site(body: ET.Element, name: str, pos: str) -> None:
       "rgba": "0 0 1 1",
     },
   )
+
+
+def _replace_foot_contact_geom(body: ET.Element, side: str) -> None:
+  """Replace the flat vendor foot box with distributed rounded contacts."""
+  original_name = f"{side}_foot"
+  for child in list(body):
+    if child.tag == "geom" and child.attrib.get("name") == original_name:
+      body.remove(child)
+
+  y_rows = (-0.038, -0.026, -0.013, 0.0, 0.013, 0.026, 0.038)
+  for index, y_pos in enumerate(y_rows, start=1):
+    ET.SubElement(
+      body,
+      "geom",
+      {
+        "name": f"{side}_foot{index}_collision",
+        "type": "capsule",
+        "size": "0.008",
+        "fromto": f"-0.105 {y_pos} -0.0555 0.145 {y_pos} -0.0555",
+        "rgba": "0 0.4 0 0.1",
+      },
+    )
 
 
 def _zero_geom_margins(root: ET.Element) -> None:
@@ -189,9 +215,11 @@ def _sanitize_hu_d03_xml() -> str:
     left_ankle = _find_body(worldbody, "left_ankle_roll_link")
     right_ankle = _find_body(worldbody, "right_ankle_roll_link")
     if left_ankle is not None:
-      _ensure_site(left_ankle, "left_foot", "0.018 0 -0.0535")
+      _replace_foot_contact_geom(left_ankle, "left")
+      _ensure_site(left_ankle, "left_foot", "0.018 0 -0.064")
     if right_ankle is not None:
-      _ensure_site(right_ankle, "right_foot", "0.018 0 -0.0535")
+      _replace_foot_contact_geom(right_ankle, "right")
+      _ensure_site(right_ankle, "right_foot", "0.018 0 -0.064")
 
   _configure_training_collisions(root)
   _zero_geom_margins(root)

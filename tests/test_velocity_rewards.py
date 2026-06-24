@@ -12,7 +12,10 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import RayCastData, RayCastSensor, TerrainHeightSensor
 from mjlab.tasks.velocity.mdp.rewards import (
   commanded_single_foot_lift,
+  feet_lateral_separation,
   linear_velocity_error_huber,
+  support_foot_com_alignment,
+  swing_foot_velocity_alignment,
   upright,
 )
 from mjlab.utils.lab_api.math import quat_from_euler_xyz
@@ -304,3 +307,104 @@ def test_commanded_single_foot_lift_ignores_standing_command():
   )
 
   torch.testing.assert_close(reward, torch.zeros(1))
+
+
+def _make_balance_env(
+  *,
+  foot_pos: torch.Tensor,
+  contacts: torch.Tensor,
+  command: torch.Tensor,
+  com_pos: torch.Tensor | None = None,
+  foot_vel: torch.Tensor | None = None,
+) -> tuple[MagicMock, SceneEntityCfg]:
+  asset = MagicMock()
+  asset.data.site_pos_w = foot_pos
+  asset.data.site_lin_vel_w = (
+    torch.zeros_like(foot_pos) if foot_vel is None else foot_vel
+  )
+  asset.data.root_link_quat_w = _identity_quat(foot_pos.shape[0])
+
+  contact_sensor = MagicMock()
+  contact_sensor.data.found = contacts
+  com_sensor = MagicMock()
+  com_sensor.data = torch.zeros(foot_pos.shape[0], 3) if com_pos is None else com_pos
+
+  env = MagicMock()
+  env.scene = {
+    "robot": asset,
+    "feet_ground_contact": contact_sensor,
+    "robot/root_com": com_sensor,
+  }
+  env.command_manager.get_command.return_value = command
+  env.extras = {"log": {}}
+  asset_cfg = SceneEntityCfg("robot", site_names=("left_foot", "right_foot"))
+  asset_cfg.site_ids = [0, 1]
+  return env, asset_cfg
+
+
+def test_support_com_alignment_rewards_weight_transfer():
+  env, asset_cfg = _make_balance_env(
+    foot_pos=torch.tensor([[[0.0, 0.12, 0.0], [0.0, -0.12, 0.0]]]),
+    contacts=torch.tensor([[1, 0]]),
+    command=torch.tensor([[0.5, 0.0, 0.0]]),
+    com_pos=torch.tensor([[0.0, 0.12, 0.8]]),
+  )
+
+  reward = support_foot_com_alignment(
+    env,
+    sensor_name="feet_ground_contact",
+    com_sensor_name="robot/root_com",
+    command_name="twist",
+    asset_cfg=asset_cfg,
+  )
+
+  assert reward.item() > 0.99
+
+
+def test_support_com_alignment_rejects_com_over_swing_side():
+  env, asset_cfg = _make_balance_env(
+    foot_pos=torch.tensor([[[0.0, 0.12, 0.0], [0.0, -0.12, 0.0]]]),
+    contacts=torch.tensor([[1, 0]]),
+    command=torch.tensor([[0.5, 0.0, 0.0]]),
+    com_pos=torch.tensor([[0.0, -0.12, 0.8]]),
+  )
+
+  reward = support_foot_com_alignment(
+    env,
+    sensor_name="feet_ground_contact",
+    com_sensor_name="robot/root_com",
+    command_name="twist",
+    asset_cfg=asset_cfg,
+  )
+
+  assert reward.item() < 0.001
+
+
+def test_feet_lateral_separation_penalizes_crossing():
+  env, asset_cfg = _make_balance_env(
+    foot_pos=torch.tensor([[[0.0, -0.02, 0.0], [0.0, 0.02, 0.0]]]),
+    contacts=torch.tensor([[1, 1]]),
+    command=torch.zeros(1, 3),
+  )
+
+  cost = feet_lateral_separation(env, asset_cfg=asset_cfg)
+
+  assert cost.item() > 1.0
+
+
+def test_swing_foot_velocity_alignment_follows_command():
+  env, asset_cfg = _make_balance_env(
+    foot_pos=torch.zeros(1, 2, 3),
+    contacts=torch.tensor([[1, 0]]),
+    command=torch.tensor([[0.5, 0.0, 0.0]]),
+    foot_vel=torch.tensor([[[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]]),
+  )
+
+  reward = swing_foot_velocity_alignment(
+    env,
+    sensor_name="feet_ground_contact",
+    command_name="twist",
+    asset_cfg=asset_cfg,
+  )
+
+  torch.testing.assert_close(reward, torch.tensor([0.8]))

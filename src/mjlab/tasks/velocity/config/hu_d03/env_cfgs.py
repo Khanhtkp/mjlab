@@ -4,6 +4,7 @@ import math
 
 from mjlab.asset_zoo.robots import (
   HU_D03_ACTION_SCALE,
+  HU_D03_FOOT_GEOM_NAMES,
   get_hu_d03_robot_cfg,
 )
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -11,7 +12,9 @@ from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
+from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import (
   BuiltinSensorCfg,
   ContactMatch,
@@ -24,6 +27,8 @@ from mjlab.sensor import (
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
+
+_FOOT_SITE_NAMES = ("left_foot", "right_foot")
 
 
 def _hu_d03_flat_action_scale() -> dict[str, float]:
@@ -65,14 +70,13 @@ def hu_d03_rough_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       assert isinstance(sensor.frame, ObjRef)
       sensor.frame.name = "waist_pitch_link"
 
-  foot_site_names = ("left_foot", "right_foot")
-  foot_geom_names = ("left_foot", "right_foot")
+  foot_geom_names = HU_D03_FOOT_GEOM_NAMES
 
   for sensor in cfg.scene.sensors or ():
     if sensor.name == "foot_height_scan":
       assert isinstance(sensor, TerrainHeightSensorCfg)
       sensor.frame = tuple(
-        ObjRef(type="site", name=s, entity="robot") for s in foot_site_names
+        ObjRef(type="site", name=s, entity="robot") for s in _FOOT_SITE_NAMES
       )
       sensor.pattern = RingPatternCfg.single_ring(radius=0.03, num_samples=6)
 
@@ -113,12 +117,18 @@ def hu_d03_rough_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     sensor_type="subtreeangmom",
     obj=ObjRef(type="body", name="base_link", entity="robot"),
   )
+  root_com_cfg = BuiltinSensorCfg(
+    name="root_com",
+    sensor_type="subtreecom",
+    obj=ObjRef(type="body", name="base_link", entity="robot"),
+  )
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     feet_ground_cfg,
     self_collision_cfg,
     imu_lin_vel_cfg,
     imu_ang_vel_cfg,
     root_angmom_cfg,
+    root_com_cfg,
   )
 
   if cfg.scene.terrain is not None and cfg.scene.terrain.terrain_generator is not None:
@@ -181,7 +191,7 @@ def hu_d03_rough_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("waist_pitch_link",)
 
   for reward_name in ("foot_clearance", "foot_slip"):
-    cfg.rewards[reward_name].params["asset_cfg"].site_names = foot_site_names
+    cfg.rewards[reward_name].params["asset_cfg"].site_names = _FOOT_SITE_NAMES
 
   cfg.rewards["body_ang_vel"].weight = -0.05
   cfg.rewards["angular_momentum"].weight = -0.02
@@ -274,11 +284,11 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["action_rate_l2"].weight = -0.05
   cfg.rewards["body_ang_vel"].weight = -0.08
   cfg.rewards["angular_momentum"].weight = -0.03
-  cfg.rewards["air_time"].weight = 0.6
+  cfg.rewards["air_time"].weight = 0.3
   cfg.rewards["air_time"].params["command_threshold"] = 0.1
   cfg.rewards["single_foot_lift"] = RewardTermCfg(
     func=mdp.commanded_single_foot_lift,
-    weight=0.5,
+    weight=0.2,
     params={
       "height_sensor_name": "foot_height_scan",
       "command_name": "twist",
@@ -286,6 +296,51 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "support_tolerance": 0.02,
       "command_threshold": 0.1,
     },
+  )
+  foot_sites_cfg = SceneEntityCfg(
+    "robot",
+    site_names=_FOOT_SITE_NAMES,
+  )
+  cfg.rewards["support_com_alignment"] = RewardTermCfg(
+    func=mdp.support_foot_com_alignment,
+    weight=1.0,
+    params={
+      "sensor_name": "feet_ground_contact",
+      "com_sensor_name": "robot/root_com",
+      "command_name": "twist",
+      "lateral_std": 0.06,
+      "command_threshold": 0.1,
+      "asset_cfg": foot_sites_cfg,
+    },
+  )
+  cfg.rewards["feet_lateral_separation"] = RewardTermCfg(
+    func=mdp.feet_lateral_separation,
+    weight=-1.0,
+    params={
+      "minimum_separation": 0.12,
+      "asset_cfg": foot_sites_cfg,
+    },
+  )
+  cfg.rewards["swing_velocity_alignment"] = RewardTermCfg(
+    func=mdp.swing_foot_velocity_alignment,
+    weight=0.4,
+    params={
+      "sensor_name": "feet_ground_contact",
+      "command_name": "twist",
+      "command_threshold": 0.1,
+      "velocity_scale": 1.0,
+      "asset_cfg": foot_sites_cfg,
+    },
+  )
+  cfg.metrics["fall_after_command_change"] = MetricsTermCfg(
+    func=mdp.command_transition_failure,
+    params={
+      "command_name": "twist",
+      "termination_name": "fell_over",
+      "transition_window_s": 1.0,
+      "change_threshold": 0.05,
+    },
+    reduce="last",
   )
   cfg.rewards["foot_swing_height"].weight = -0.4
   cfg.rewards["foot_swing_height"].params["target_height"] = 0.06

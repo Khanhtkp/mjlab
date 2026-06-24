@@ -4,6 +4,9 @@ from mjlab.asset_zoo.robots.hu_d03.hu_d03_constants import (
   HU_D03_ACTION_SCALE as HU_D03_ACTION_SCALE,
 )
 from mjlab.asset_zoo.robots.hu_d03.hu_d03_constants import (
+  HU_D03_FOOT_GEOM_NAMES as HU_D03_FOOT_GEOM_NAMES,
+)
+from mjlab.asset_zoo.robots.hu_d03.hu_d03_constants import (
   HU_D03_JOINT_NAMES as HU_D03_JOINT_NAMES,
 )
 from mjlab.asset_zoo.robots.hu_d03.hu_d03_constants import (
