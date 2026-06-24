@@ -2,7 +2,11 @@
 
 import pytest
 
-from mjlab.asset_zoo.robots import G1_ACTION_SCALE, GO1_ACTION_SCALE
+from mjlab.asset_zoo.robots import (
+  G1_ACTION_SCALE,
+  GO1_ACTION_SCALE,
+  HUD03_ACTION_SCALE,
+)
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.tasks.registry import list_tasks, load_env_cfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
@@ -24,6 +28,12 @@ def g1_velocity_task_ids(velocity_task_ids: list[str]) -> list[str]:
 def go1_velocity_task_ids(velocity_task_ids: list[str]) -> list[str]:
   """Get all Go1 velocity task IDs."""
   return [t for t in velocity_task_ids if "Go1" in t]
+
+
+@pytest.fixture(scope="module")
+def hud03_velocity_task_ids(velocity_task_ids: list[str]) -> list[str]:
+  """Get all HUD03 velocity task IDs."""
+  return [t for t in velocity_task_ids if "HUD03" in t]
 
 
 @pytest.fixture(scope="module")
@@ -88,6 +98,17 @@ def test_go1_velocity_has_required_sensors(go1_velocity_task_ids: list[str]) -> 
         assert name in sensor_names, f"Task {task_id} missing {name} sensor"
 
 
+def test_hud03_velocity_has_required_sensors(
+  hud03_velocity_task_ids: list[str],
+) -> None:
+  """HUD03 velocity tasks should have foot/ground and self-collision sensors."""
+  for task_id in hud03_velocity_task_ids:
+    cfg = load_env_cfg(task_id)
+    assert cfg.scene.sensors is not None
+    sensor_names = {sensor.name for sensor in cfg.scene.sensors}
+    assert {"feet_ground_contact", "self_collision"} <= sensor_names
+
+
 def test_flat_velocity_tasks_have_plane_terrain(
   flat_velocity_task_ids: list[str],
 ) -> None:
@@ -126,6 +147,7 @@ def test_rough_velocity_training_has_curriculum_enabled() -> None:
   rough_training_tasks = [
     "Mjlab-Velocity-Rough-Unitree-G1",
     "Mjlab-Velocity-Rough-Unitree-Go1",
+    "Mjlab-Velocity-Rough-LimX-HUD03",
   ]
 
   for task_id in rough_training_tasks:
@@ -146,6 +168,7 @@ def test_rough_velocity_play_has_curriculum_disabled() -> None:
   rough_training_tasks = [
     "Mjlab-Velocity-Rough-Unitree-G1",
     "Mjlab-Velocity-Rough-Unitree-Go1",
+    "Mjlab-Velocity-Rough-LimX-HUD03",
   ]
 
   for task_id in rough_training_tasks:
@@ -197,3 +220,14 @@ def test_go1_velocity_has_correct_action_scale(
     assert joint_pos_action.scale == GO1_ACTION_SCALE, (
       f"Task {task_id} action scale mismatch, expected GO1_ACTION_SCALE"
     )
+
+
+def test_hud03_velocity_has_correct_action_scale(
+  hud03_velocity_task_ids: list[str],
+) -> None:
+  """HUD03 velocity tasks should use HUD03_ACTION_SCALE."""
+  for task_id in hud03_velocity_task_ids:
+    cfg = load_env_cfg(task_id)
+    joint_pos_action = cfg.actions["joint_pos"]
+    assert isinstance(joint_pos_action, JointPositionActionCfg)
+    assert joint_pos_action.scale == HUD03_ACTION_SCALE
