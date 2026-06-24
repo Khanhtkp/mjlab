@@ -237,6 +237,7 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.curriculum.pop("terrain_levels", None)
+  cfg.curriculum.pop("command_vel", None)
 
   joint_pos_action = cfg.actions["joint_pos"]
   assert isinstance(joint_pos_action, JointPositionActionCfg)
@@ -247,19 +248,20 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # rewards are tuned below.
   cfg.terminations["fell_over"].params["limit_angle"] = math.radians(70.0)
 
-  # Keep the G1 flat command distribution/curriculum intact. A broad tracking
-  # reward provides exploration gradient, while the precision reward and Huber
-  # cost prevent long-lived standing policies from ignoring velocity commands.
+  # Keep the initial G1 flat command distribution intact, but use no command
+  # curriculum so every iteration is trained against the same full task.
+  # A broad tracking reward supplies exploration gradient while the precision
+  # term and Huber cost discourage long-lived standing policies.
   cfg.rewards["track_linear_velocity"].weight = 4.5
   cfg.rewards["track_linear_velocity"].params["std"] = 0.5
   cfg.rewards["track_linear_velocity_precision"] = RewardTermCfg(
     func=mdp.track_linear_velocity,
-    weight=2.0,
+    weight=1.5,
     params={"command_name": "twist", "std": 0.25},
   )
   cfg.rewards["linear_velocity_error"] = RewardTermCfg(
     func=mdp.linear_velocity_error_huber,
-    weight=-2.5,
+    weight=-1.5,
     params={
       "command_name": "twist",
       "beta": 0.25,
@@ -268,13 +270,15 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     },
   )
   cfg.rewards["track_angular_velocity"].weight = 1.0
-  cfg.rewards["pose"].weight = 0.3
-  cfg.rewards["action_rate_l2"].weight = -0.02
-  cfg.rewards["air_time"].weight = 0.9
+  cfg.rewards["pose"].weight = 0.45
+  cfg.rewards["action_rate_l2"].weight = -0.05
+  cfg.rewards["body_ang_vel"].weight = -0.08
+  cfg.rewards["angular_momentum"].weight = -0.03
+  cfg.rewards["air_time"].weight = 0.6
   cfg.rewards["air_time"].params["command_threshold"] = 0.1
   cfg.rewards["single_foot_lift"] = RewardTermCfg(
     func=mdp.commanded_single_foot_lift,
-    weight=1.0,
+    weight=0.5,
     params={
       "height_sensor_name": "foot_height_scan",
       "command_name": "twist",
@@ -283,9 +287,9 @@ def hu_d03_flat_velocity_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "command_threshold": 0.1,
     },
   )
-  cfg.rewards["foot_swing_height"].weight = -0.6
+  cfg.rewards["foot_swing_height"].weight = -0.4
   cfg.rewards["foot_swing_height"].params["target_height"] = 0.06
-  cfg.rewards["foot_clearance"].weight = -3.0
+  cfg.rewards["foot_clearance"].weight = -2.0
   cfg.rewards["foot_clearance"].params["target_height"] = 0.06
   cfg.rewards["foot_slip"].weight = -0.2
   cfg.rewards["soft_landing"].weight = -5.0e-5

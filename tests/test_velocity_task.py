@@ -200,7 +200,7 @@ def test_go1_velocity_has_correct_action_scale(
 
 
 def test_hu_d03_flat_matches_g1_task_difficulty() -> None:
-  """HU_D03 keeps G1 command, push, termination, and PPO difficulty."""
+  """HU_D03 keeps G1 command, push, and termination difficulty."""
   hu_cfg = load_env_cfg("Mjlab-Velocity-Flat-HU-D03")
   g1_cfg = load_env_cfg("Mjlab-Velocity-Flat-Unitree-G1")
 
@@ -229,5 +229,7 @@ def test_hu_d03_flat_matches_g1_task_difficulty() -> None:
   hu_rl = load_rl_cfg("Mjlab-Velocity-Flat-HU-D03")
   g1_rl = load_rl_cfg("Mjlab-Velocity-Flat-Unitree-G1")
   assert hu_rl.clip_actions == g1_rl.clip_actions
-  assert hu_rl.actor.distribution_cfg == g1_rl.actor.distribution_cfg
-  assert hu_rl.algorithm.entropy_coef == g1_rl.algorithm.entropy_coef
+  assert hu_rl.actor.distribution_cfg is not None
+  assert hu_rl.actor.distribution_cfg["init_std"] == 0.6
+  assert hu_rl.algorithm.entropy_coef == 0.003
+  assert "command_vel" not in hu_cfg.curriculum

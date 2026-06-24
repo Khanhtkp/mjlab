@@ -23,6 +23,9 @@ Added
 Changed
 ^^^^^^^
 
+- Rebalanced HU_D03 flat velocity tracking with robot-specific actuator
+  bandwidth, action ranges, PPO exploration, and locomotion rewards while
+  retaining the full Unitree G1 command, push, and termination difficulty.
 - Bumped ``rsl-rl-lib`` from 5.2.0 to 5.4.0.
 - Curriculum-mode terrain difficulty is now deterministic across rows
   and reaches the configured ``difficulty_range`` endpoints

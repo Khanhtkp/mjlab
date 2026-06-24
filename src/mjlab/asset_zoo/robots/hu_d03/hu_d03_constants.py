@@ -67,10 +67,10 @@ _FOOT_GEOM_NAMES = {"left_foot", "right_foot"}
 
 # HU_D03 has substantially larger reflected rotor inertia than G1. Using G1's
 # 10 Hz bandwidth makes its direct-joint training model several times stiffer
-# while leaving only a few degrees of policy action authority. A 4 Hz bandwidth
-# keeps the same critically damped controller design while bringing lower-body
-# gains and usable position-target ranges into the same regime as G1.
-NATURAL_FREQ = 4.0 * 2.0 * pi
+# while leaving only a few degrees of policy action authority. A 5 Hz bandwidth
+# keeps the same critically damped controller design while giving the lower body
+# enough support and a useful, but not excessively aggressive, target range.
+NATURAL_FREQ = 5.0 * 2.0 * pi
 DAMPING_RATIO = 2.0
 
 HIP_KNEE_ARMATURE = 0.15257125
