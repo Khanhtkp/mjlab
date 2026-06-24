@@ -47,6 +47,17 @@ def test_hud03_keyframe(hud03_entity: Entity, hud03_model) -> None:
   np.testing.assert_allclose(key.qpos[7:], expected_values)
 
 
+def test_hud03_keyframe_places_arms_in_front(hud03_model) -> None:
+  data = mujoco.MjData(hud03_model)
+  data.qpos[:] = hud03_model.key("init_state").qpos
+  mujoco.mj_forward(hud03_model, data)
+
+  torso_x = data.body("waist_pitch_link").xpos[0]
+  for side in ("left", "right"):
+    assert data.body(f"{side}_elbow_link").xpos[0] > torso_x
+    assert data.body(f"{side}_hand_yaw_link").xpos[0] > torso_x + 0.1
+
+
 def test_hud03_required_sensors_and_sites(hud03_model) -> None:
   sensor_names = {hud03_model.sensor(i).name for i in range(hud03_model.nsensor)}
   assert {"imu_ang_vel", "imu_lin_vel", "root_angmom"} <= sensor_names

@@ -212,10 +212,12 @@ KNEES_BENT_KEYFRAME = EntityCfg.InitialStateCfg(
     r".*_hip_pitch_joint": -0.25,
     r".*_knee_joint": 0.5,
     r".*_ankle_pitch_joint": -0.25,
-    r".*_shoulder_pitch_joint": 0.15,
+    # HUD03's +Y shoulder/elbow axes use negative angles for forward flexion.
+    # Using G1's positive-angle convention places both hands behind the torso.
+    r".*_shoulder_pitch_joint": -0.15,
     "left_shoulder_roll_joint": 0.2,
     "right_shoulder_roll_joint": -0.2,
-    r".*_elbow_joint": 0.6,
+    r".*_elbow_joint": -0.6,
   },
   joint_vel={".*": 0.0},
 )
